@@ -8,44 +8,44 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* SheCare Pink-Purple Theme */
-    --background: 328 100% 97%;
-    --foreground: 0 0% 20%;
+    /* SheCare Maroon/Burgundy Theme - matching prototype */
+    --background: 0 0% 98%;
+    --foreground: 0 0% 15%;
 
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 20%;
+    --card-foreground: 0 0% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 20%;
+    --popover-foreground: 0 0% 15%;
 
-    /* Primary: Pink gradient (#ff6b9d) */
-    --primary: 340 100% 70%;
+    /* Primary: Maroon/Burgundy (#8B1538 - deep red) */
+    --primary: 343 75% 31%;
     --primary-foreground: 0 0% 100%;
     
-    /* Secondary: Purple (#c86dd7) */
-    --secondary: 285 58% 64%;
+    /* Secondary: Lighter burgundy for accents */
+    --secondary: 343 60% 45%;
     --secondary-foreground: 0 0% 100%;
 
-    /* Muted: Soft pink backgrounds */
-    --muted: 328 100% 95%;
+    /* Muted: Light gray backgrounds */
+    --muted: 0 0% 96%;
     --muted-foreground: 0 0% 40%;
 
-    /* Accent: Soft pink */
-    --accent: 328 100% 92%;
-    --accent-foreground: 340 100% 70%;
+    /* Accent: Pink accent for logo/highlights */
+    --accent: 340 82% 75%;
+    --accent-foreground: 0 0% 15%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 328 100% 90%;
-    --input: 328 100% 90%;
-    --ring: 340 100% 70%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 343 75% 31%;
 
-    --radius: 1.25rem;
+    --radius: 0.75rem;
 
-    /* Hero gradient colors */
-    --hero-start: 328 100% 96%;
-    --hero-end: 285 100% 95%;
+    /* Dark maroon for sections */
+    --maroon-dark: 343 75% 25%;
+    --maroon-darker: 343 75% 20%;
     
     /* Footer dark background */
     --footer-bg: 0 0% 20%;
@@ -119,12 +119,12 @@ All colors MUST be HSL.
 }
 
 @layer utilities {
-  .gradient-primary {
-    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)));
+  .bg-maroon {
+    background: hsl(var(--maroon-dark));
   }
   
-  .gradient-hero {
-    background: linear-gradient(135deg, hsl(var(--hero-start)), hsl(var(--hero-end)));
+  .bg-maroon-darker {
+    background: hsl(var(--maroon-darker));
   }
 
   .card-hover {
@@ -132,6 +132,10 @@ All colors MUST be HSL.
   }
 
   .nav-link {
-    @apply transition-opacity duration-200 hover:opacity-70;
+    @apply transition-colors duration-200 hover:text-primary;
+  }
+
+  .hero-overlay {
+    background: linear-gradient(90deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 100%);
   }
 }

@@ -1,22 +1,31 @@
+import logoIcon from '@/assets/logo-icon.png';
+import aboutImage from '@/assets/about-image.jpg';
+
 const AboutSection = () => {
   return (
-    <section id="tentang" className="py-20 gradient-hero">
+    <section id="tentang" className="py-20 bg-maroon text-white">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl md:text-5xl font-bold mb-12">Tentang SheCare</h2>
-          <div className="space-y-6 text-lg md:text-xl leading-relaxed text-foreground">
-            <p>
-              SheCare adalah platform kesehatan digital yang didedikasikan untuk perempuan Indonesia. 
-              Kami memahami bahwa setiap perempuan memiliki kebutuhan kesehatan yang unik dan memerlukan 
-              akses yang mudah ke informasi dan layanan kesehatan yang berkualitas.
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          {/* Left Side - Logo and Text */}
+          <div className="text-center lg:text-left">
+            <div className="flex items-center justify-center lg:justify-start space-x-3 mb-8">
+              <img src={logoIcon} alt="SheCare Logo" className="w-16 h-16" />
+              <h2 className="text-4xl md:text-5xl font-bold text-accent">SheCare</h2>
+            </div>
+            <p className="text-xl md:text-2xl leading-relaxed">
+              kami percaya bahwa setiap wanita berhak untuk memahami dan merawat tubuhnya dengan penuh cinta.
             </p>
-            <p>
-              Dengan SheCare, Anda dapat berkonsultasi dengan profesional kesehatan, mengakses artikel edukatif, 
-              dan mengelola kesehatan Anda dengan lebih baik - semuanya dalam satu platform yang aman dan terpercaya.
-            </p>
-            <p className="text-2xl md:text-3xl font-bold text-primary pt-4">
-              Kesehatan Anda, Prioritas Kami
-            </p>
+          </div>
+
+          {/* Right Side - Image */}
+          <div className="flex justify-center">
+            <div className="rounded-3xl overflow-hidden shadow-2xl max-w-md w-full">
+              <img 
+                src={aboutImage} 
+                alt="Happy woman" 
+                className="w-full h-full object-cover"
+              />
+            </div>
           </div>
         </div>
       </div>

@@ -47,9 +47,9 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        hero: {
-          start: "hsl(var(--hero-start))",
-          end: "hsl(var(--hero-end))",
+        maroon: {
+          DEFAULT: "hsl(var(--maroon-dark))",
+          dark: "hsl(var(--maroon-darker))",
         },
         footer: {
           DEFAULT: "hsl(var(--footer-bg))",
