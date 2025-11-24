@@ -14,7 +14,7 @@ const Footer = () => {
         <div className="max-w-4xl mx-auto text-center">
           {/* Brand */}
           <div className="mb-6">
-            <h3 className="text-3xl font-bold text-primary mb-2">SheCare</h3>
+            <h3 className="text-3xl font-bold text-accent mb-2">SheCare</h3>
             <p className="text-lg">Platform kesehatan perempuan terpercaya</p>
           </div>
 
@@ -31,9 +31,9 @@ const Footer = () => {
                 key={index}
                 href={social.href}
                 aria-label={social.label}
-                className="w-12 h-12 rounded-full gradient-primary flex items-center justify-center hover:scale-110 transition-transform duration-300"
+                className="w-12 h-12 rounded-full bg-accent flex items-center justify-center hover:scale-110 transition-transform duration-300"
               >
-                <social.icon className="text-primary-foreground" size={20} />
+                <social.icon className="text-white" size={20} />
               </a>
             ))}
           </div>
