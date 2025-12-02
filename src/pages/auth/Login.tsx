@@ -1,13 +1,18 @@
-// src/pages/Login.tsx
+// src/pages/auth/Login.tsx - DEBUG VERSION
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Mail, Lock, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useAuth } from "@/context/AuthContext";
 import logoIcon from "@/assets/logo-icon.png";
 
 const Login = () => {
+  const navigate = useNavigate();
+  const { login, register, isLoading: authLoading } = useAuth();
+
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -15,17 +20,30 @@ const Login = () => {
     password: "",
     confirmPassword: "",
     name: "",
+    phone: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<string>("");
 
   const handleSubmit = async () => {
     setError("");
+    setDebugInfo("");
     setLoading(true);
+
+    console.log("🚀 Form submitted:", { isLogin, email: formData.email });
 
     // Validation
     if (!formData.email || !formData.password) {
       setError("Email dan password harus diisi");
+      setLoading(false);
+      return;
+    }
+
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError("Format email tidak valid");
       setLoading(false);
       return;
     }
@@ -49,32 +67,98 @@ const Login = () => {
     }
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setDebugInfo("Menghubungi server...");
+      console.log("📡 Calling API...");
 
-      // Mock user data
-      const mockUser = {
-        id: "1",
-        name: isLogin ? "Sarah Wijaya" : formData.name,
-        email: formData.email,
-      };
-
-      // Store in localStorage
-      localStorage.setItem("shecare_user", JSON.stringify(mockUser));
-      localStorage.setItem("shecare_token", "mock-jwt-token-123");
-
-      // Redirect based on mode
       if (isLogin) {
-        window.location.href = "/profile";
+        console.log("🔐 Attempting login with:", formData.email);
+        await login(formData.email, formData.password);
+        console.log("✅ Login successful!");
+        setDebugInfo("Login berhasil! Redirecting...");
+
+        // Small delay to show success message
+        setTimeout(() => {
+          navigate("/profile");
+        }, 500);
       } else {
-        // After register, redirect to profile
-        window.location.href = "/profile";
+        console.log("📝 Attempting register with:", {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+        });
+
+        await register(
+          formData.name,
+          formData.email,
+          formData.password,
+          formData.phone || undefined
+        );
+
+        console.log("✅ Registration successful!");
+        setDebugInfo("Registrasi berhasil! Redirecting...");
+
+        // Small delay to show success message
+        setTimeout(() => {
+          navigate("/profile");
+        }, 500);
       }
-    } catch (err) {
-      setError("Terjadi kesalahan. Silakan coba lagi.");
+    } catch (err: any) {
+      console.error("❌ Auth error:", err);
+
+      // Detailed error logging
+      if (err.error) {
+        console.error("Error code:", err.error);
+      }
+      if (err.status) {
+        console.error("HTTP status:", err.status);
+      }
+
+      // User-friendly error messages
+      let errorMessage = "Terjadi kesalahan. Silakan coba lagi.";
+
+      if (err.message) {
+        errorMessage = err.message;
+      } else if (err.error === "NETWORK_ERROR") {
+        errorMessage =
+          "Gagal terhubung ke server. Periksa koneksi internet Anda.";
+      } else if (err.error === "TIMEOUT") {
+        errorMessage = "Request timeout. Server tidak merespons.";
+      } else if (err.status === 401) {
+        errorMessage = isLogin
+          ? "Email atau password salah"
+          : "Registrasi gagal. Email mungkin sudah terdaftar.";
+      } else if (err.status === 422 || err.status === 400) {
+        errorMessage = "Data yang dimasukkan tidak valid";
+      } else if (err.status >= 500) {
+        errorMessage = "Server error. Silakan coba lagi nanti.";
+      }
+
+      setError(errorMessage);
+      setDebugInfo(
+        `Error: ${err.error || "Unknown"} (Status: ${err.status || "N/A"})`
+      );
+    } finally {
       setLoading(false);
     }
   };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !loading) {
+      handleSubmit();
+    }
+  };
+
+  // Show loading state from AuthContext
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-maroon via-maroon-darker to-primary flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-lg">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-maroon via-maroon-darker to-primary flex items-center justify-center p-4">
@@ -114,6 +198,14 @@ const Login = () => {
               </Alert>
             )}
 
+            {debugInfo && (
+              <Alert className="mb-6 bg-blue-50 border-blue-200">
+                <AlertDescription className="text-blue-800 text-xs">
+                  Debug: {debugInfo}
+                </AlertDescription>
+              </Alert>
+            )}
+
             <div className="space-y-5">
               {/* Name Field (Register only) */}
               {!isLogin && (
@@ -129,7 +221,9 @@ const Login = () => {
                     onChange={(e) =>
                       setFormData({ ...formData, name: e.target.value })
                     }
+                    onKeyPress={handleKeyPress}
                     className="h-12"
+                    disabled={loading}
                   />
                 </div>
               )}
@@ -152,10 +246,35 @@ const Login = () => {
                     onChange={(e) =>
                       setFormData({ ...formData, email: e.target.value })
                     }
+                    onKeyPress={handleKeyPress}
                     className="h-12 pl-10"
+                    disabled={loading}
+                    autoComplete="email"
                   />
                 </div>
               </div>
+
+              {/* Phone Field (Register only) */}
+              {!isLogin && (
+                <div className="space-y-2">
+                  <Label htmlFor="phone" className="text-sm font-semibold">
+                    Nomor Telepon{" "}
+                    <span className="text-muted-foreground">(Opsional)</span>
+                  </Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="08123456789"
+                    value={formData.phone}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone: e.target.value })
+                    }
+                    onKeyPress={handleKeyPress}
+                    className="h-12"
+                    disabled={loading}
+                  />
+                </div>
+              )}
 
               {/* Password Field */}
               <div className="space-y-2">
@@ -175,12 +294,16 @@ const Login = () => {
                     onChange={(e) =>
                       setFormData({ ...formData, password: e.target.value })
                     }
+                    onKeyPress={handleKeyPress}
                     className="h-12 pl-10 pr-10"
+                    disabled={loading}
+                    autoComplete={isLogin ? "current-password" : "new-password"}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    disabled={loading}
                   >
                     {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                   </button>
@@ -212,7 +335,10 @@ const Login = () => {
                           confirmPassword: e.target.value,
                         })
                       }
+                      onKeyPress={handleKeyPress}
                       className="h-12 pl-10"
+                      disabled={loading}
+                      autoComplete="new-password"
                     />
                   </div>
                 </div>
@@ -221,12 +347,16 @@ const Login = () => {
               {/* Forgot Password (Login only) */}
               {isLogin && (
                 <div className="text-right">
-                  <a
-                    href="/forgot-password"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      alert("Fitur lupa password akan segera tersedia");
+                    }}
                     className="text-sm text-primary hover:text-primary/80 font-medium"
+                    disabled={loading}
                   >
                     Lupa password?
-                  </a>
+                  </button>
                 </div>
               )}
 
@@ -268,14 +398,17 @@ const Login = () => {
                   onClick={() => {
                     setIsLogin(!isLogin);
                     setError("");
+                    setDebugInfo("");
                     setFormData({
                       email: "",
                       password: "",
                       confirmPassword: "",
                       name: "",
+                      phone: "",
                     });
                   }}
                   className="text-primary hover:text-primary/80 font-semibold"
+                  disabled={loading}
                 >
                   {isLogin ? "Daftar sekarang" : "Masuk di sini"}
                 </button>
@@ -286,11 +419,11 @@ const Login = () => {
             {!isLogin && (
               <p className="text-xs text-center text-muted-foreground mt-6">
                 Dengan mendaftar, Anda menyetujui{" "}
-                <a href="/terms" className="text-primary hover:underline">
+                <a href="#" className="text-primary hover:underline">
                   Syarat & Ketentuan
                 </a>{" "}
                 dan{" "}
-                <a href="/privacy" className="text-primary hover:underline">
+                <a href="#" className="text-primary hover:underline">
                   Kebijakan Privasi
                 </a>{" "}
                 kami

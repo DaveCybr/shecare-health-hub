@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.tsx
+// src/context/AuthContext.tsx
 import {
   createContext,
   useContext,
@@ -6,21 +6,22 @@ import {
   useEffect,
   ReactNode,
 } from "react";
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  avatar?: string;
-}
+import { authService, type User, type AuthResponse } from "@/lib/api/services";
+import { STORAGE_KEYS } from "@/lib/api/config";
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (
+    name: string,
+    email: string,
+    password: string,
+    phone?: string
+  ) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -41,76 +42,97 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check if user is logged in on mount
+  // Initialize auth state on mount
   useEffect(() => {
-    const checkAuth = () => {
-      const storedUser = localStorage.getItem("shecare_user");
-      const token = localStorage.getItem("shecare_token");
+    const initAuth = async () => {
+      const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+      const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
 
-      if (storedUser && token) {
-        setUser(JSON.parse(storedUser));
+      if (token && storedUser) {
+        try {
+          // Validate token by fetching current user
+          const currentUser = await authService.getCurrentUser();
+          setUser(currentUser);
+
+          // Update stored user data
+          localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(currentUser));
+        } catch (error) {
+          // Token invalid or expired
+          console.error("Auth validation failed:", error);
+          logout();
+        }
       }
+
       setIsLoading(false);
     };
 
-    checkAuth();
+    initAuth();
   }, []);
 
   const login = async (email: string, password: string) => {
     try {
-      // TODO: Replace with actual API call
-      // const response = await fetch('/api/auth/login', {
-      //   method: 'POST',
-      //   body: JSON.stringify({ email, password })
-      // });
+      setIsLoading(true);
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const response: AuthResponse = await authService.login({
+        email,
+        password,
+      });
 
-      // Mock user data
-      const mockUser: User = {
-        id: "1",
-        name: "Sarah Wijaya",
-        email: email,
-      };
+      // Store token and user data
+      localStorage.setItem(STORAGE_KEYS.TOKEN, response.token);
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.user));
 
-      // Store in localStorage
-      localStorage.setItem("shecare_user", JSON.stringify(mockUser));
-      localStorage.setItem("shecare_token", "mock-jwt-token-123");
-
-      setUser(mockUser);
-    } catch (error) {
+      setUser(response.user);
+    } catch (error: any) {
       console.error("Login error:", error);
-      throw new Error("Login gagal. Silakan coba lagi.");
+      throw new Error(error.message || "Login gagal. Silakan coba lagi.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const register = async (name: string, email: string, password: string) => {
+  const register = async (
+    name: string,
+    email: string,
+    password: string,
+    phone?: string
+  ) => {
     try {
-      // TODO: Replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setIsLoading(true);
 
-      // Mock user data
-      const mockUser: User = {
-        id: "1",
-        name: name,
-        email: email,
-      };
+      const response: AuthResponse = await authService.register({
+        name,
+        email,
+        password,
+        phone,
+      });
 
-      // Store in localStorage
-      localStorage.setItem("shecare_user", JSON.stringify(mockUser));
-      localStorage.setItem("shecare_token", "mock-jwt-token-123");
+      // Store token and user data
+      localStorage.setItem(STORAGE_KEYS.TOKEN, response.token);
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.user));
 
-      setUser(mockUser);
-    } catch (error) {
+      setUser(response.user);
+    } catch (error: any) {
       console.error("Register error:", error);
-      throw new Error("Pendaftaran gagal. Silakan coba lagi.");
+      throw new Error(error.message || "Pendaftaran gagal. Silakan coba lagi.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const refreshUser = async () => {
+    try {
+      const currentUser = await authService.getCurrentUser();
+      setUser(currentUser);
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(currentUser));
+    } catch (error) {
+      console.error("Failed to refresh user:", error);
     }
   };
 
   const logout = () => {
-    localStorage.removeItem("shecare_user");
-    localStorage.removeItem("shecare_token");
+    localStorage.removeItem(STORAGE_KEYS.TOKEN);
+    localStorage.removeItem(STORAGE_KEYS.USER);
     setUser(null);
     window.location.href = "/";
   };
@@ -122,6 +144,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     login,
     register,
     logout,
+    refreshUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
