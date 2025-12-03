@@ -1,4 +1,4 @@
-// src/lib/api/apiClient.ts - LOGIN ERROR FIX
+// src/lib/api/apiClient.ts - ENHANCED DEBUGGING
 
 import { API_BASE_URL, REQUEST_TIMEOUT, STORAGE_KEYS } from "./config";
 
@@ -25,6 +25,8 @@ class ApiClient {
   ) {
     this.baseURL = baseURL;
     this.defaultTimeout = timeout;
+
+    console.log("🌐 [ApiClient] Initialized with baseURL:", this.baseURL);
   }
 
   private getToken(): string | null {
@@ -43,8 +45,10 @@ class ApiClient {
 
     console.log(
       "🔑 [ApiClient] Token retrieved:",
-      token.substring(0, 30) + "..."
+      token.substring(0, 50) + "..."
     );
+    console.log("🔑 [ApiClient] Full token length:", token.length);
+
     return token;
   }
 
@@ -77,6 +81,7 @@ class ApiClient {
       fullURL += `?${queryParams.toString()}`;
     }
 
+    console.log("🔗 [ApiClient] Built URL:", fullURL);
     return fullURL;
   }
 
@@ -99,10 +104,16 @@ class ApiClient {
         };
       }
 
+      // ✅ CRITICAL: Exact format that Postman uses
       headers["Authorization"] = `Bearer ${token}`;
-      console.log("✅ [ApiClient] Authorization header added");
+
+      console.log(
+        "✅ [ApiClient] Authorization header:",
+        `Bearer ${token.substring(0, 50)}...`
+      );
     }
 
+    console.log("📋 [ApiClient] All headers:", headers);
     return headers;
   }
 
@@ -112,21 +123,25 @@ class ApiClient {
   ): Promise<ApiResponse<T>> {
     const contentType = response.headers.get("content-type");
 
-    // ✅ Handle 401 with context awareness
+    console.log("📥 [ApiClient] Response:", {
+      status: response.status,
+      statusText: response.statusText,
+      contentType,
+      headers: Array.from(response.headers.entries()),
+    });
+
     if (response.status === 401) {
       console.error("❌ [ApiClient] 401 Unauthorized");
 
-      // Parse response body to get actual error message
       let errorMessage = "Session expired. Please login again.";
 
       if (contentType?.includes("application/json")) {
         try {
           const data = await response.json();
-          // ✅ Use backend's error message if available
+          console.error("❌ [ApiClient] 401 Error body:", data);
+
           errorMessage = data.message || errorMessage;
 
-          // ✅ Only clear token if this was an authenticated request
-          // For login failures (requireAuth: false), don't clear anything
           if (requireAuth) {
             console.log("🧹 [ApiClient] Clearing invalid token");
             localStorage.removeItem(STORAGE_KEYS.TOKEN);
@@ -142,11 +157,13 @@ class ApiClient {
             status: 401,
           };
         } catch (parseError) {
-          // If JSON parsing fails, use default message
+          console.error(
+            "❌ [ApiClient] Failed to parse 401 error:",
+            parseError
+          );
         }
       }
 
-      // Default 401 handling
       if (requireAuth) {
         localStorage.removeItem(STORAGE_KEYS.TOKEN);
         localStorage.removeItem(STORAGE_KEYS.USER);
@@ -222,12 +239,17 @@ class ApiClient {
       throw error;
     }
 
-    console.log("📡 [ApiClient] Request:", {
-      method: fetchConfig.method || "GET",
-      url,
-      requireAuth,
-      hasToken: !!this.getToken(),
-    });
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("📡 [ApiClient] Request Details:");
+    console.log("   Method:", fetchConfig.method || "GET");
+    console.log("   URL:", url);
+    console.log("   Require Auth:", requireAuth);
+    console.log("   Has Token:", !!this.getToken());
+    console.log("   Headers:", headers);
+    if (fetchConfig.body) {
+      console.log("   Body:", fetchConfig.body);
+    }
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -239,12 +261,13 @@ class ApiClient {
           ...headers,
           ...fetchConfig.headers,
         },
+        // ✅ CRITICAL: Match Postman's behavior
         credentials: "include",
+        mode: "cors", // Explicitly set CORS mode
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
-      // ✅ Pass requireAuth to handleResponse for context
       return await this.handleResponse<T>(response, requireAuth);
     } catch (error: any) {
       clearTimeout(timeoutId);
@@ -262,6 +285,7 @@ class ApiClient {
         throw error;
       }
 
+      console.error("❌ [ApiClient] Network error:", error);
       throw {
         success: false,
         message: error.message || "Network error",

@@ -1,7 +1,8 @@
-// src/pages/questionnaire/Result.tsx
+// src/pages/questionnaire/Result.tsx - WITH REACT-TO-PRINT
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useReactToPrint } from "react-to-print";
 import {
   ArrowLeft,
   Download,
@@ -9,7 +10,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Loader2,
-  Share2,
+  Printer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +34,7 @@ import logoIcon from "@/assets/logo-icon.png";
 const Result = () => {
   const { submissionId } = useParams<{ submissionId: string }>();
   const navigate = useNavigate();
+  const printRef = useRef<HTMLDivElement>(null);
 
   const [result, setResult] = useState<QuestionnaireResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,50 +70,78 @@ const Result = () => {
     }
   };
 
-  const handleExportPDF = async () => {
-    try {
+  // ✅ SIMPLE: Using react-to-print
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: `SheCare-Result-${submissionId}`,
+    onBeforePrint: () => {
       setExporting("pdf");
-      const htmlContent = await questionnaireService.exportToPDF(
-        submissionId!,
-        language
-      );
-
-      // Create new window with HTML content
-      const printWindow = window.open("", "_blank");
-      if (printWindow) {
-        printWindow.document.write(htmlContent);
-        printWindow.document.close();
-        // Trigger print dialog
-        setTimeout(() => {
-          printWindow.print();
-        }, 250);
-      }
-    } catch (err: any) {
-      console.error("❌ PDF export failed:", err);
-      alert("Gagal export PDF. Silakan coba lagi.");
-    } finally {
+      return Promise.resolve();
+    },
+    onAfterPrint: () => {
       setExporting(null);
-    }
-  };
+    },
+  });
 
   const handleExportExcel = async () => {
+    if (!result) return;
+
     try {
       setExporting("excel");
-      const csvContent = await questionnaireService.exportToExcel(
-        submissionId!,
-        language
-      );
 
-      // Create download link
-      const blob = new Blob([csvContent], { type: "text/csv" });
+      // Create CSV content
+      let csv = "\ufeff"; // UTF-8 BOM for Excel
+      csv += "SheCare - Hasil Analisis Kesehatan\n\n";
+      csv += `Nama,${result.user_name || "N/A"}\n`;
+      csv += `Tanggal,${new Date(result.submission_date).toLocaleDateString(
+        "id-ID"
+      )}\n`;
+      csv += `Total Skor,${result.total_score}\n\n`;
+
+      csv += "Diagnosis\n";
+      if (result.diseases.length === 0) {
+        csv +=
+          "Hasil Normal,Tidak ditemukan indikasi kondisi kesehatan yang memerlukan perhatian khusus\n\n";
+      } else {
+        result.diseases.forEach((disease: Disease, index: number) => {
+          csv += `${index + 1}. ${
+            disease.name || disease.name_id || "Unknown"
+          }\n`;
+          csv += `Tingkat Keparahan,${disease.severity}\n`;
+          csv += `Probabilitas,${disease.probability || "N/A"}%\n`;
+          csv += `Deskripsi,"${(
+            disease.description ||
+            disease.description_id ||
+            "N/A"
+          ).replace(/"/g, '""')}"\n`;
+          csv += `Rekomendasi,"${(
+            disease.recommendations ||
+            disease.recommendations_id ||
+            "N/A"
+          ).replace(/"/g, '""')}"\n\n`;
+        });
+      }
+
+      csv += "Jawaban Kuisioner\n";
+      csv += "No,Pertanyaan,Jawaban\n";
+      result.answers.forEach((answer: any, index: number) => {
+        csv += `${index + 1},"${answer.question_text.replace(/"/g, '""')}",${
+          answer.answer_value
+        }\n`;
+      });
+
+      // Create blob and download
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `shecare-result-${submissionId}.csv`;
+      link.download = `SheCare-Result-${submissionId}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
+
+      console.log("✅ Excel exported successfully");
     } catch (err: any) {
       console.error("❌ Excel export failed:", err);
       alert("Gagal export Excel. Silakan coba lagi.");
@@ -188,8 +218,8 @@ const Result = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <nav className="bg-card shadow-md sticky top-0 z-50">
+      {/* Header - NOT printed */}
+      <nav className="bg-card shadow-md sticky top-0 z-50 print:hidden">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
             <a href="/" className="flex items-center space-x-3">
@@ -210,112 +240,208 @@ const Result = () => {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-12 max-w-4xl">
-        {/* Header Section */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-primary mb-4">
-            Hasil Analisis Kesehatan
-          </h1>
-          <p className="text-muted-foreground">
-            Tanggal:{" "}
-            {new Date(result.submitted_at).toLocaleDateString("id-ID", {
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </p>
-        </div>
-
-        {/* Score Summary */}
-        <Card className="mb-8 border-2 border-primary/20">
-          <CardHeader className="text-center">
-            <CardTitle>Total Skor</CardTitle>
-            <div className="text-6xl font-bold text-primary my-4">
-              {result.total_score}
+        {/* ✅ PRINTABLE CONTENT */}
+        <div ref={printRef} className="print:p-8">
+          {/* PDF Header - Only visible when printing */}
+          <div className="hidden print:block text-center mb-8 border-b-4 border-pink-500 pb-4">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <img src={logoIcon} alt="SheCare" className="w-12 h-12" />
+              <h1 className="text-3xl font-bold text-pink-600">SheCare</h1>
             </div>
-            <CardDescription>
-              Berdasarkan {result.answers.length} pertanyaan
-            </CardDescription>
-          </CardHeader>
-        </Card>
+            <h2 className="text-2xl font-semibold mt-2">
+              Hasil Diagnosis Kesehatan Kewanitaan
+            </h2>
+          </div>
 
-        {/* Diseases Analysis */}
-        <div className="space-y-6 mb-8">
-          <h2 className="text-2xl font-bold">Indikasi Kondisi Kesehatan</h2>
+          {/* Header Section */}
+          <div className="text-center mb-8 print:mb-6">
+            <h1 className="text-4xl font-bold text-primary mb-4 print:text-3xl print:hidden">
+              Hasil Analisis Kesehatan
+            </h1>
+            <div className="hidden print:block mb-4 p-4 bg-blue-50 border border-blue-200 rounded">
+              <div className="grid grid-cols-2 gap-2 text-sm text-left">
+                <div>
+                  <strong>Nama:</strong> {result.user_name || "N/A"}
+                </div>
+                <div>
+                  <strong>Tanggal:</strong>{" "}
+                  {new Date(result.submission_date).toLocaleDateString(
+                    "id-ID",
+                    {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }
+                  )}
+                </div>
+              </div>
+            </div>
+            <p className="text-muted-foreground print:hidden">
+              Tanggal:{" "}
+              {new Date(result.submission_date).toLocaleDateString("id-ID", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </p>
+          </div>
 
-          {result.diseases.length === 0 ? (
-            <Alert>
-              <CheckCircle2 className="h-5 w-5" />
-              <AlertDescription>
-                <strong>Hasil Normal</strong>
-                <p className="mt-2">
-                  Tidak ditemukan indikasi kondisi kesehatan yang memerlukan
-                  perhatian khusus. Tetap jaga pola hidup sehat!
-                </p>
-              </AlertDescription>
-            </Alert>
-          ) : (
-            result.diseases.map((disease: Disease, index: number) => (
-              <Card key={index} className="overflow-hidden">
-                <CardHeader className={getSeverityColor(disease.severity)}>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-xl">
-                        {disease.name ||
-                          disease.name_id ||
-                          disease.name_en ||
-                          "Unknown Disease"}
-                      </CardTitle>
-                      {disease.probability && (
-                        <p className="text-sm mt-1">
-                          Tingkat kemungkinan: {disease.probability}%
+          {/* Score Summary */}
+          <Card className="mb-8 border-2 border-primary/20 print:shadow-none print:mb-6">
+            <CardHeader className="text-center">
+              <CardTitle className="print:text-xl">Total Skor</CardTitle>
+              <div className="text-6xl font-bold text-primary my-4 print:text-4xl print:my-2">
+                {result.total_score}
+              </div>
+              <CardDescription className="print:text-sm">
+                Berdasarkan {result.answers.length} pertanyaan
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          {/* Diseases Analysis */}
+          <div className="space-y-6 mb-8 print:mb-6">
+            <h2 className="text-2xl font-bold print:text-xl print:border-b-2 print:border-blue-300 print:pb-2">
+              Indikasi Kondisi Kesehatan
+            </h2>
+
+            {result.diseases.length === 0 ? (
+              <Alert className="print:bg-green-50 print:border-green-300">
+                <CheckCircle2 className="h-5 w-5" />
+                <AlertDescription>
+                  <strong>Hasil Normal</strong>
+                  <p className="mt-2">
+                    Tidak ditemukan indikasi kondisi kesehatan yang memerlukan
+                    perhatian khusus. Tetap jaga pola hidup sehat!
+                  </p>
+                </AlertDescription>
+              </Alert>
+            ) : (
+              result.diseases.map((disease: Disease, index: number) => (
+                <Card
+                  key={index}
+                  className="overflow-hidden print:shadow-none print:border-2 print:mb-4"
+                >
+                  <CardHeader className={getSeverityColor(disease.severity)}>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="text-xl print:text-lg">
+                          {disease.name ||
+                            disease.name_id ||
+                            disease.name_en ||
+                            "Unknown Disease"}
+                        </CardTitle>
+                        {disease.probability && (
+                          <p className="text-sm mt-1">
+                            Tingkat kemungkinan: {disease.probability}%
+                          </p>
+                        )}
+                      </div>
+                      <Badge className={getSeverityColor(disease.severity)}>
+                        {getSeverityLabel(disease.severity)}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-6 print:pt-4">
+                    <div className="space-y-4 print:space-y-3">
+                      <div>
+                        <h4 className="font-semibold mb-2 flex items-center gap-2 print:text-sm">
+                          <AlertCircle
+                            size={18}
+                            className="print:w-4 print:h-4"
+                          />
+                          Deskripsi
+                        </h4>
+                        <p className="text-muted-foreground print:text-sm print:text-gray-700">
+                          {disease.description ||
+                            disease.description_id ||
+                            disease.description_en ||
+                            "No description available"}
                         </p>
-                      )}
-                    </div>
-                    <Badge className={getSeverityColor(disease.severity)}>
-                      {getSeverityLabel(disease.severity)}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6">
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="font-semibold mb-2 flex items-center gap-2">
-                        <AlertCircle size={18} />
-                        Deskripsi
-                      </h4>
-                      <p className="text-muted-foreground">
-                        {disease.description ||
-                          disease.description_id ||
-                          disease.description_en ||
-                          "No description available"}
-                      </p>
-                    </div>
+                      </div>
 
-                    <Separator />
+                      <Separator className="print:my-2" />
 
-                    <div>
-                      <h4 className="font-semibold mb-2 flex items-center gap-2">
-                        <CheckCircle2 size={18} />
-                        Rekomendasi
-                      </h4>
-                      <p className="text-muted-foreground whitespace-pre-line">
-                        {disease.recommendations ||
-                          disease.recommendations_id ||
-                          disease.recommendations_en ||
-                          "No recommendations available"}
-                      </p>
+                      <div>
+                        <h4 className="font-semibold mb-2 flex items-center gap-2 print:text-sm">
+                          <CheckCircle2
+                            size={18}
+                            className="print:w-4 print:h-4"
+                          />
+                          Rekomendasi
+                        </h4>
+                        <p className="text-muted-foreground whitespace-pre-line print:text-sm print:text-gray-700">
+                          {disease.recommendations ||
+                            disease.recommendations_id ||
+                            disease.recommendations_en ||
+                            "No recommendations available"}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+
+          {/* Answers Section - Only in print */}
+          <div className="hidden print:block mb-6">
+            <h3 className="font-bold text-xl mb-4 text-blue-900 border-b-2 border-blue-300 pb-2">
+              Jawaban Kuisioner
+            </h3>
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border border-gray-300 p-2 text-left w-12">
+                    No
+                  </th>
+                  <th className="border border-gray-300 p-2 text-left">
+                    Pertanyaan
+                  </th>
+                  <th className="border border-gray-300 p-2 text-center w-24">
+                    Jawaban
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.answers.map((answer: any, index: number) => (
+                  <tr key={index}>
+                    <td className="border border-gray-300 p-2 text-center">
+                      {index + 1}
+                    </td>
+                    <td className="border border-gray-300 p-2">
+                      {answer.question_text}
+                    </td>
+                    <td className="border border-gray-300 p-2 text-center font-semibold">
+                      {answer.answer_value} / 5
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer - Only in print */}
+          <div className="hidden print:block mt-8 pt-4 border-t-2 border-gray-300 text-xs text-gray-600">
+            <p className="mb-2">
+              <strong>Catatan Penting:</strong> Hasil ini merupakan diagnosis
+              awal berdasarkan kuesioner yang diisi. Untuk diagnosis yang lebih
+              akurat, silakan konsultasikan dengan dokter atau tenaga medis
+              profesional.
+            </p>
+            <p className="text-center text-gray-500 mt-4">
+              © {new Date().getFullYear()} SheCare - Women's Health Care
+              Platform
+            </p>
+          </div>
         </div>
 
-        {/* Actions */}
-        <Card>
+        {/* Actions - NOT printed */}
+        <Card className="print:hidden">
           <CardHeader>
             <CardTitle>Aksi</CardTitle>
             <CardDescription>
@@ -326,19 +452,19 @@ const Result = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Button
                 variant="outline"
-                onClick={handleExportPDF}
+                onClick={handlePrint}
                 disabled={exporting !== null}
                 className="w-full"
               >
                 {exporting === "pdf" ? (
                   <>
                     <Loader2 className="mr-2 animate-spin" size={20} />
-                    Exporting...
+                    Opening Print...
                   </>
                 ) : (
                   <>
-                    <Download className="mr-2" size={20} />
-                    Export PDF
+                    <Printer className="mr-2" size={20} />
+                    Print / Save as PDF
                   </>
                 )}
               </Button>
@@ -352,12 +478,12 @@ const Result = () => {
                 {exporting === "excel" ? (
                   <>
                     <Loader2 className="mr-2 animate-spin" size={20} />
-                    Exporting...
+                    Generating...
                   </>
                 ) : (
                   <>
                     <Download className="mr-2" size={20} />
-                    Export Excel
+                    Export to Excel
                   </>
                 )}
               </Button>
@@ -382,8 +508,8 @@ const Result = () => {
           </CardContent>
         </Card>
 
-        {/* Disclaimer */}
-        <Alert className="mt-8">
+        {/* Disclaimer - NOT printed */}
+        <Alert className="mt-8 print:hidden">
           <AlertCircle className="h-5 w-5" />
           <AlertDescription>
             <strong>Disclaimer:</strong> Hasil analisis ini bersifat indikatif

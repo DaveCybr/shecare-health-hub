@@ -76,8 +76,9 @@ export interface Disease {
 export interface QuestionnaireResult {
   submission_id: number;
   user_id: number;
+  user_name?: string;
   total_score: number;
-  submitted_at: string;
+  submission_date: string;
   diseases: Disease[];
   answers: Array<{
     question_id: number;
