@@ -1,17 +1,25 @@
-// src/pages/auth/Login.tsx - DEBUG VERSION
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+// src/pages/auth/Login.tsx - ADD STORAGE CHECK
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Eye, EyeOff, Mail, Lock, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/context/AuthContext";
+import { STORAGE_KEYS } from "@/lib/api/config";
 import logoIcon from "@/assets/logo-icon.png";
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login, register, isLoading: authLoading } = useAuth();
+  const location = useLocation();
+  const {
+    login,
+    register,
+    isAuthenticated,
+    user,
+    isLoading: authLoading,
+  } = useAuth();
 
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -23,63 +31,119 @@ const Login = () => {
     phone: "",
   });
   const [error, setError] = useState("");
-  const [debugInfo, setDebugInfo] = useState<string>("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // ✅ Check localStorage support
+  useEffect(() => {
+    try {
+      const testKey = "__storage_test__";
+      localStorage.setItem(testKey, "test");
+      localStorage.removeItem(testKey);
+      console.log("✅ [Login] localStorage is available");
+    } catch (e) {
+      console.error("❌ [Login] localStorage is NOT available:", e);
+      setError(
+        "Browser storage tidak tersedia. Nonaktifkan mode private/incognito."
+      );
+    }
+  }, []);
+
+  // ✅ Redirect if already authenticated
+  useEffect(() => {
+    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+
+    console.log("🔍 [Login] Auth state check:", {
+      isAuthenticated,
+      hasUser: !!user,
+      hasToken: !!token,
+      authLoading,
+    });
+
+    // ✅ Only redirect if BOTH user AND token exist
+    if (isAuthenticated && user && token && !authLoading) {
+      const from = (location.state as any)?.from || "/profile";
+      console.log("✅ [Login] Fully authenticated, redirecting to:", from);
+      navigate(from, { replace: true });
+    } else if (isAuthenticated && !token) {
+      // ✅ CRITICAL: isAuthenticated TRUE but no token = BUG
+      console.error(
+        "🐛 [Login] BUG DETECTED: isAuthenticated=true but no token!"
+      );
+      console.error("This should never happen. Forcing logout...");
+      // Don't redirect, stay on login page
+    }
+  }, [isAuthenticated, user, authLoading, navigate, location]);
 
   const handleSubmit = async () => {
     setError("");
-    setDebugInfo("");
-
-    console.log("🚀 Form submitted:", { isLogin, email: formData.email });
+    setSubmitting(true);
 
     // Validation
     if (!formData.email || !formData.password) {
       setError("Email dan password harus diisi");
+      setSubmitting(false);
       return;
     }
 
-    // Email format validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
       setError("Format email tidak valid");
+      setSubmitting(false);
       return;
     }
 
     if (!isLogin) {
       if (!formData.name) {
         setError("Nama lengkap harus diisi");
+        setSubmitting(false);
         return;
       }
       if (formData.password !== formData.confirmPassword) {
         setError("Password tidak cocok");
-
+        setSubmitting(false);
         return;
       }
       if (formData.password.length < 6) {
         setError("Password minimal 6 karakter");
+        setSubmitting(false);
         return;
       }
     }
 
     try {
-      setDebugInfo("Menghubungi server...");
-      console.log("📡 Calling API...");
-
       if (isLogin) {
-        console.log("🔐 Attempting login with:", formData.email);
-        await login(formData.email, formData.password);
-        console.log("✅ Login successful!");
-        setDebugInfo("Login berhasil! Redirecting...");
+        console.log("🔐 [Login Page] Attempting login...");
 
-        // Small delay to show success message
-        setTimeout(() => {
-          navigate("/profile");
-        }, 500);
-      } else {
-        console.log("📝 Attempting register with:", {
-          name: formData.name,
-          email: formData.email,
-          phone: formData.phone,
+        // ✅ Call login
+        await login(formData.email, formData.password);
+
+        // ✅ Wait for state update
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // ✅ Verify token exists
+        const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+        const user = localStorage.getItem(STORAGE_KEYS.USER);
+
+        console.log("🔍 [Login Page] Post-login verification:", {
+          hasToken: !!token,
+          tokenLength: token?.length || 0,
+          hasUser: !!user,
         });
+
+        if (!token) {
+          throw new Error(
+            "Login successful but token not stored! Check browser settings."
+          );
+        }
+
+        console.log("✅ [Login Page] Login successful!");
+
+        // ✅ Navigate
+        const from = (location.state as any)?.from || "/profile";
+        console.log("🚀 [Login Page] Navigating to:", from);
+        navigate(from, { replace: true });
+      } else {
+        console.log("📝 [Login Page] Attempting register...");
 
         await register(
           formData.name,
@@ -88,59 +152,52 @@ const Login = () => {
           formData.phone || undefined
         );
 
-        console.log("✅ Registration successful!");
-        setDebugInfo("Registrasi berhasil! Redirecting...");
+        // ✅ Wait for state update
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
-        // Small delay to show success message
-        setTimeout(() => {
-          navigate("/profile");
-        }, 500);
+        // ✅ Verify token
+        const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+
+        if (!token) {
+          throw new Error("Registration successful but token not stored!");
+        }
+
+        console.log("✅ [Login Page] Registration successful!");
+        navigate("/profile", { replace: true });
       }
     } catch (err: any) {
-      console.error("❌ Auth error:", err);
+      console.error("❌ [Login Page] Auth error:", err);
 
-      // Detailed error logging
-      if (err.error) {
-        console.error("Error code:", err.error);
-      }
-      if (err.status) {
-        console.error("HTTP status:", err.status);
-      }
-
-      // User-friendly error messages
       let errorMessage = "Terjadi kesalahan. Silakan coba lagi.";
 
       if (err.message) {
         errorMessage = err.message;
       } else if (err.error === "NETWORK_ERROR") {
-        errorMessage =
-          "Gagal terhubung ke server. Periksa koneksi internet Anda.";
+        errorMessage = "Gagal terhubung ke server. Periksa koneksi internet.";
       } else if (err.error === "TIMEOUT") {
         errorMessage = "Request timeout. Server tidak merespons.";
       } else if (err.status === 401) {
         errorMessage = isLogin
           ? "Email atau password salah"
-          : "Registrasi gagal. Email mungkin sudah terdaftar.";
+          : "Email sudah terdaftar.";
       } else if (err.status === 422 || err.status === 400) {
-        errorMessage = "Data yang dimasukkan tidak valid";
+        errorMessage = "Data tidak valid";
       } else if (err.status >= 500) {
-        errorMessage = "Server error. Silakan coba lagi nanti.";
+        errorMessage = "Server error. Coba lagi nanti.";
       }
 
       setError(errorMessage);
-      setDebugInfo(
-        `Error: ${err.error || "Unknown"} (Status: ${err.status || "N/A"})`
-      );
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !authLoading) {
+    if (e.key === "Enter" && !submitting) {
       handleSubmit();
     }
   };
 
-  // Show loading state from AuthContext
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-maroon via-maroon-darker to-primary flex items-center justify-center">
@@ -154,7 +211,6 @@ const Login = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-maroon via-maroon-darker to-primary flex items-center justify-center p-4">
-      {/* Back to Home Button */}
       <a
         href="/"
         className="fixed top-6 left-6 flex items-center gap-2 text-white/90 hover:text-white transition-colors group z-50"
@@ -166,10 +222,8 @@ const Login = () => {
         <span className="font-medium">Kembali ke Beranda</span>
       </a>
 
-      {/* Login/Register Card */}
       <div className="w-full max-w-md">
         <div className="bg-card rounded-3xl shadow-2xl overflow-hidden">
-          {/* Header */}
           <div className="bg-primary text-white p-8 text-center">
             <div className="flex justify-center mb-4">
               <div className="bg-white rounded-full p-3">
@@ -182,7 +236,6 @@ const Login = () => {
             </p>
           </div>
 
-          {/* Form */}
           <div className="p-8">
             {error && (
               <Alert variant="destructive" className="mb-6">
@@ -190,41 +243,25 @@ const Login = () => {
               </Alert>
             )}
 
-            {debugInfo && (
-              <Alert className="mb-6 bg-blue-50 border-blue-200">
-                <AlertDescription className="text-blue-800 text-xs">
-                  Debug: {debugInfo}
-                </AlertDescription>
-              </Alert>
-            )}
-
             <div className="space-y-5">
-              {/* Name Field (Register only) */}
               {!isLogin && (
                 <div className="space-y-2">
-                  <Label htmlFor="name" className="text-sm font-semibold">
-                    Nama Lengkap
-                  </Label>
+                  <Label htmlFor="name">Nama Lengkap</Label>
                   <Input
                     id="name"
-                    type="text"
                     placeholder="Masukkan nama lengkap"
                     value={formData.name}
                     onChange={(e) =>
                       setFormData({ ...formData, name: e.target.value })
                     }
                     onKeyPress={handleKeyPress}
-                    className="h-12"
-                    disabled={authLoading}
+                    disabled={submitting}
                   />
                 </div>
               )}
 
-              {/* Email Field */}
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-semibold">
-                  Email
-                </Label>
+                <Label htmlFor="email">Email</Label>
                 <div className="relative">
                   <Mail
                     className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -239,20 +276,15 @@ const Login = () => {
                       setFormData({ ...formData, email: e.target.value })
                     }
                     onKeyPress={handleKeyPress}
-                    className="h-12 pl-10"
-                    disabled={authLoading}
-                    autoComplete="email"
+                    className="pl-10"
+                    disabled={submitting}
                   />
                 </div>
               </div>
 
-              {/* Phone Field (Register only) */}
               {!isLogin && (
                 <div className="space-y-2">
-                  <Label htmlFor="phone" className="text-sm font-semibold">
-                    Nomor Telepon{" "}
-                    <span className="text-muted-foreground">(Opsional)</span>
-                  </Label>
+                  <Label htmlFor="phone">Nomor Telepon (Opsional)</Label>
                   <Input
                     id="phone"
                     type="tel"
@@ -262,17 +294,13 @@ const Login = () => {
                       setFormData({ ...formData, phone: e.target.value })
                     }
                     onKeyPress={handleKeyPress}
-                    className="h-12"
-                    disabled={authLoading}
+                    disabled={submitting}
                   />
                 </div>
               )}
 
-              {/* Password Field */}
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-semibold">
-                  Password
-                </Label>
+                <Label htmlFor="password">Password</Label>
                 <div className="relative">
                   <Lock
                     className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -287,30 +315,23 @@ const Login = () => {
                       setFormData({ ...formData, password: e.target.value })
                     }
                     onKeyPress={handleKeyPress}
-                    className="h-12 pl-10 pr-10"
-                    disabled={authLoading}
-                    autoComplete={isLogin ? "current-password" : "new-password"}
+                    className="pl-10 pr-10"
+                    disabled={submitting}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    disabled={authLoading}
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                    disabled={submitting}
                   >
                     {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                   </button>
                 </div>
               </div>
 
-              {/* Confirm Password Field (Register only) */}
               {!isLogin && (
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="confirmPassword"
-                    className="text-sm font-semibold"
-                  >
-                    Konfirmasi Password
-                  </Label>
+                  <Label htmlFor="confirmPassword">Konfirmasi Password</Label>
                   <div className="relative">
                     <Lock
                       className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -328,106 +349,45 @@ const Login = () => {
                         })
                       }
                       onKeyPress={handleKeyPress}
-                      className="h-12 pl-10"
-                      disabled={authLoading}
-                      autoComplete="new-password"
+                      className="pl-10"
+                      disabled={submitting}
                     />
                   </div>
                 </div>
               )}
 
-              {/* Forgot Password (Login only) */}
-              {isLogin && (
-                <div className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      alert("Fitur lupa password akan segera tersedia");
-                    }}
-                    className="text-sm text-primary hover:text-primary/80 font-medium"
-                    disabled={authLoading}
-                  >
-                    Lupa password?
-                  </button>
-                </div>
-              )}
-
-              {/* Submit Button */}
               <Button
                 onClick={handleSubmit}
-                className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-lg"
-                disabled={authLoading}
+                className="w-full"
+                disabled={submitting}
               >
-                {authLoading ? (
-                  <span className="flex items-center gap-2">
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Memproses...
-                  </span>
-                ) : isLogin ? (
-                  "Masuk"
-                ) : (
-                  "Daftar"
-                )}
+                {submitting ? "Memproses..." : isLogin ? "Masuk" : "Daftar"}
               </Button>
             </div>
 
-            {/* Divider */}
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-border"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-card text-muted-foreground">atau</span>
-              </div>
+            <div className="text-center mt-6">
+              <button
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setError("");
+                  setFormData({
+                    email: "",
+                    password: "",
+                    confirmPassword: "",
+                    name: "",
+                    phone: "",
+                  });
+                }}
+                className="text-primary hover:underline"
+                disabled={submitting}
+              >
+                {isLogin
+                  ? "Belum punya akun? Daftar"
+                  : "Sudah punya akun? Masuk"}
+              </button>
             </div>
-
-            {/* Toggle Login/Register */}
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground">
-                {isLogin ? "Belum punya akun?" : "Sudah punya akun?"}{" "}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsLogin(!isLogin);
-                    setError("");
-                    setDebugInfo("");
-                    setFormData({
-                      email: "",
-                      password: "",
-                      confirmPassword: "",
-                      name: "",
-                      phone: "",
-                    });
-                  }}
-                  className="text-primary hover:text-primary/80 font-semibold"
-                  disabled={authLoading}
-                >
-                  {isLogin ? "Daftar sekarang" : "Masuk di sini"}
-                </button>
-              </p>
-            </div>
-
-            {/* Terms (Register only) */}
-            {!isLogin && (
-              <p className="text-xs text-center text-muted-foreground mt-6">
-                Dengan mendaftar, Anda menyetujui{" "}
-                <a href="#" className="text-primary hover:underline">
-                  Syarat & Ketentuan
-                </a>{" "}
-                dan{" "}
-                <a href="#" className="text-primary hover:underline">
-                  Kebijakan Privasi
-                </a>{" "}
-                kami
-              </p>
-            )}
           </div>
         </div>
-
-        {/* Footer Text */}
-        <p className="text-center text-white/70 text-sm mt-6">
-          © 2024 SheCare. Platform kesehatan perempuan terpercaya.
-        </p>
       </div>
     </div>
   );

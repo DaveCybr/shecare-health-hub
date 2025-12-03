@@ -1,25 +1,27 @@
+// src/components/Navbar.tsx - FIXED VERSION
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom"; // ✅ Import
+import { useNavigate, useLocation } from "react-router-dom";
 import { Menu, X, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import logoIcon from "@/assets/logo-icon.png";
 
 const Navbar = () => {
-  const navigate = useNavigate(); // ✅ Gunakan hook
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, isLoading } = useAuth();
 
-  // 👇 Debug log
+  // ✅ Debug log whenever auth state changes
   useEffect(() => {
-    console.log(
-      "🔍 Navbar mounted - isAuthenticated:",
+    console.log("🔍 [Navbar] Auth state changed:", {
       isAuthenticated,
-      "user:",
-      user
-    );
-  }, [isAuthenticated, user]);
+      user: user?.name,
+      isLoading,
+      pathname: location.pathname,
+    });
+  }, [isAuthenticated, user, isLoading, location.pathname]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -39,14 +41,40 @@ const Navbar = () => {
   ];
 
   const handleProfileClick = () => {
-    console.log("🔘 Profile clicked");
-    navigate("/profile"); // ✅ Gunakan navigate
+    console.log("🔘 [Navbar] Profile clicked");
+    navigate("/profile");
   };
 
   const handleLoginClick = () => {
-    console.log("🔘 Login clicked");
-    navigate("/login"); // ✅ Gunakan navigate
+    console.log("🔘 [Navbar] Login clicked");
+    navigate("/login");
   };
+
+  // ✅ Show loading state
+  if (isLoading) {
+    return (
+      <nav
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+          isScrolled
+            ? "bg-card/95 backdrop-blur-md shadow-lg"
+            : "bg-card shadow-md"
+        }`}
+      >
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-20">
+            <a
+              href="#beranda"
+              className="flex items-center space-x-3 hover:opacity-80 transition-opacity"
+            >
+              <img src={logoIcon} alt="SheCare Logo" className="w-12 h-12" />
+              <span className="text-3xl font-bold text-accent">SheCare</span>
+            </a>
+            <div className="w-24 h-10 bg-muted animate-pulse rounded" />
+          </div>
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <nav
@@ -83,18 +111,18 @@ const Navbar = () => {
             {/* Divider */}
             <div className="w-px h-6 bg-border mx-2" />
 
-            {/* Auth Buttons */}
-            {isAuthenticated ? (
+            {/* ✅ Auth Buttons - Properly show based on state */}
+            {isAuthenticated && user ? (
               <button
                 onClick={handleProfileClick}
                 className="flex items-center gap-2 px-4 py-2 rounded-full hover:bg-accent/20 transition-all duration-300 group"
-                title={`Profile: ${user?.name || "User"}`}
+                title={`Profile: ${user.name}`}
               >
                 <div className="p-1.5 rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors">
                   <User size={18} className="text-primary" />
                 </div>
                 <span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                  {user?.name?.split(" ")[0] || "Profile"}
+                  {user.name.split(" ")[0]}
                 </span>
               </button>
             ) : (
@@ -135,7 +163,7 @@ const Navbar = () => {
               ))}
 
               <div className="pt-4 border-t border-border mt-2 space-y-2">
-                {isAuthenticated ? (
+                {isAuthenticated && user ? (
                   <button
                     onClick={() => {
                       setIsMobileMenuOpen(false);

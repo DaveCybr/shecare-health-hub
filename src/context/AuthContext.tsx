@@ -1,10 +1,12 @@
-// src/context/AuthContext.tsx
+// src/context/AuthContext.tsx - REACTIVE FIX
 import {
   createContext,
   useContext,
   useState,
   useEffect,
   ReactNode,
+  useCallback,
+  useMemo,
 } from "react";
 import { authService, type User, type AuthResponse } from "@/lib/api/services";
 import { STORAGE_KEYS } from "@/lib/api/config";
@@ -41,60 +43,94 @@ interface AuthProviderProps {
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // ✅ Add token state to trigger re-renders
+  const [hasToken, setHasToken] = useState(false);
 
-  // Initialize auth state by calling auth/me
   useEffect(() => {
-    const initAuth = async () => {
-      const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-
-      console.log("🔍 Initializing auth...", { hasToken: !!token });
-
-      if (!token) {
-        console.log("❌ No token found, user not authenticated");
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        console.log("📡 Fetching user from auth/me...");
-        const currentUser = await authService.getCurrentUser();
-
-        setUser(currentUser);
-        console.log("✅ Auth validated from API:", currentUser);
-      } catch (error) {
-        console.error("❌ Auth validation failed:", error);
-        logout();
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
+    console.log("🚀 [AuthContext] Initializing...");
     initAuth();
   }, []);
 
+  // ✅ Check token on every render
+  useEffect(() => {
+    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+    const tokenExists = !!token;
+
+    if (tokenExists !== hasToken) {
+      console.log("🔄 [AuthContext] Token state changed:", tokenExists);
+      setHasToken(tokenExists);
+    }
+  }, [user]); // Re-check when user changes
+
+  const initAuth = async () => {
+    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+
+    console.log("🔍 [AuthContext] Init check:", {
+      hasToken: !!token,
+      tokenPreview: token?.substring(0, 30) + "...",
+    });
+
+    if (!token) {
+      console.log("❌ [AuthContext] No token");
+      setUser(null);
+      setHasToken(false);
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      console.log("📡 [AuthContext] Validating token...");
+      const currentUser = await authService.getCurrentUser();
+
+      setUser(currentUser);
+      setHasToken(true);
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(currentUser));
+      console.log("✅ [AuthContext] Auth validated:", currentUser.name);
+    } catch (error) {
+      console.error("❌ [AuthContext] Token validation failed:", error);
+      localStorage.removeItem(STORAGE_KEYS.TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.USER);
+      setUser(null);
+      setHasToken(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const login = async (email: string, password: string) => {
     try {
-      console.log("🔐 Attempting login...");
+      console.log("🔐 [AuthContext] Starting login...");
 
       const response: AuthResponse = await authService.login({
         email,
         password,
       });
 
-      console.log("✅ Login response:", response);
+      console.log("📥 [AuthContext] Login response:", {
+        hasToken: !!response.token,
+        tokenLength: response.token?.length,
+        user: response.user.name,
+      });
 
-      // ✅ Store token first
+      // ✅ Store token
       localStorage.setItem(STORAGE_KEYS.TOKEN, response.token);
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.user));
 
-      // ✅ Use user from login response directly
+      // ✅ Verify immediately
+      const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
+      if (!storedToken) {
+        throw new Error("Failed to store token!");
+      }
+
+      console.log("✅ [AuthContext] Token stored, length:", storedToken.length);
+
+      // ✅ Update states
       setUser(response.user);
+      setHasToken(true);
 
-      console.log(
-        "✅ Login successful, user set from response:",
-        response.user
-      );
+      console.log("✅ [AuthContext] Login complete");
     } catch (error: any) {
-      console.error("❌ Login error:", error);
+      console.error("❌ [AuthContext] Login error:", error);
       throw error;
     }
   };
@@ -106,7 +142,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     phone?: string
   ) => {
     try {
-      console.log("📝 Attempting registration...");
+      console.log("📝 [AuthContext] Starting registration...");
 
       const response: AuthResponse = await authService.register({
         name,
@@ -115,52 +151,104 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         phone,
       });
 
-      console.log("✅ Register response:", response);
-
-      // ✅ Store token first
+      // ✅ Store token
       localStorage.setItem(STORAGE_KEYS.TOKEN, response.token);
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.user));
 
-      // ✅ Use user from register response directly
+      const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
+      if (!storedToken) {
+        throw new Error("Failed to store token!");
+      }
+
+      // ✅ Update states
       setUser(response.user);
+      setHasToken(true);
 
-      console.log(
-        "✅ Registration successful, user set from response:",
-        response.user
-      );
+      console.log("✅ [AuthContext] Registration complete");
     } catch (error: any) {
-      console.error("❌ Register error:", error);
+      console.error("❌ [AuthContext] Register error:", error);
       throw error;
     }
   };
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     try {
-      console.log("🔄 Refreshing user from API...");
+      console.log("🔄 [AuthContext] Refreshing user...");
       const currentUser = await authService.getCurrentUser();
+
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(currentUser));
       setUser(currentUser);
-      console.log("✅ User refreshed:", currentUser);
+
+      console.log("✅ [AuthContext] User refreshed");
     } catch (error) {
-      console.error("❌ Failed to refresh user:", error);
+      console.error("❌ [AuthContext] Refresh failed:", error);
       logout();
     }
-  };
+  }, []);
 
-  const logout = () => {
-    console.log("👋 Logging out...");
+  const logout = useCallback(() => {
+    console.log("👋 [AuthContext] Logging out...");
+
     localStorage.removeItem(STORAGE_KEYS.TOKEN);
     localStorage.removeItem(STORAGE_KEYS.USER);
     setUser(null);
-  };
+    setHasToken(false);
+
+    console.log("✅ [AuthContext] Logout complete");
+  }, []);
+
+  // ✅ Listen to storage changes
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEYS.TOKEN) {
+        console.log("🔄 [AuthContext] Token changed in another tab");
+        const newToken = e.newValue;
+        setHasToken(!!newToken);
+        if (!newToken) {
+          setUser(null);
+        } else {
+          initAuth();
+        }
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
+  // ✅ useMemo for isAuthenticated - recomputes when dependencies change
+  const isAuthenticated = useMemo(() => {
+    const result = !!user && hasToken;
+
+    console.log("🔍 [AuthContext] isAuthenticated computed:", {
+      hasUser: !!user,
+      hasToken,
+      result,
+    });
+
+    return result;
+  }, [user, hasToken]);
 
   const value = {
     user,
-    isAuthenticated: !!user,
+    isAuthenticated,
     isLoading,
     login,
     register,
     logout,
     refreshUser,
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

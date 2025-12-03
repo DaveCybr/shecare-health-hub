@@ -1,4 +1,4 @@
-// src/lib/api/apiClient.ts
+// src/lib/api/apiClient.ts - TOKEN HANDLING FIXED
 
 import { API_BASE_URL, REQUEST_TIMEOUT, STORAGE_KEYS } from "./config";
 
@@ -27,13 +27,23 @@ class ApiClient {
     this.defaultTimeout = timeout;
   }
 
+  // ✅ Get token from localStorage with validation
   private getToken(): string | null {
-    return localStorage.getItem(STORAGE_KEYS.TOKEN);
+    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+
+    // Debug log
+    if (!token) {
+      console.warn("⚠️ [ApiClient] No token found in localStorage");
+    } else {
+      console.log(
+        "🔑 [ApiClient] Token found:",
+        token.substring(0, 20) + "..."
+      );
+    }
+
+    return token;
   }
 
-  /**
-   * ✅ FIXED: Build full URL with proper base + endpoint concatenation
-   */
   private buildURL(endpoint: string, params?: Record<string, any>): string {
     // Handle absolute URLs
     if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) {
@@ -72,15 +82,20 @@ class ApiClient {
     return fullURL;
   }
 
+  // ✅ Build headers with proper token handling
   private buildHeaders(requireAuth: boolean = true): HeadersInit {
     const headers: HeadersInit = {
       "Content-Type": "application/json",
+      Accept: "application/json",
     };
 
     if (requireAuth) {
       const token = this.getToken();
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
+        console.log("✅ [ApiClient] Authorization header added");
+      } else {
+        console.error("❌ [ApiClient] Token required but not found!");
       }
     }
 
@@ -89,6 +104,24 @@ class ApiClient {
 
   private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
     const contentType = response.headers.get("content-type");
+
+    // ✅ Handle 401 Unauthorized
+    if (response.status === 401) {
+      console.error(
+        "❌ [ApiClient] 401 Unauthorized - Token invalid or expired"
+      );
+
+      // Clear invalid token
+      localStorage.removeItem(STORAGE_KEYS.TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.USER);
+
+      throw {
+        success: false,
+        message: "Session expired. Please login again.",
+        error: "Unauthorized",
+        status: 401,
+      };
+    }
 
     if (contentType?.includes("application/json")) {
       const data = await response.json();
@@ -141,9 +174,6 @@ class ApiClient {
     };
   }
 
-  /**
-   * ✅ FIXED: Added credentials: 'include' for CORS
-   */
   private async request<T>(
     endpoint: string,
     config: RequestConfig = {}
@@ -158,9 +188,11 @@ class ApiClient {
     const url = this.buildURL(endpoint, params);
     const headers = this.buildHeaders(requireAuth);
 
-    console.log("🔍 API Request:", {
-      url,
+    console.log("📡 [ApiClient] Request:", {
       method: fetchConfig.method || "GET",
+      url,
+      requireAuth,
+      hasToken: !!this.getToken(),
     });
 
     const controller = new AbortController();
@@ -173,7 +205,7 @@ class ApiClient {
           ...headers,
           ...fetchConfig.headers,
         },
-        credentials: "include", // ✅ ADDED for CORS with cookies
+        credentials: "include",
         signal: controller.signal,
       });
 

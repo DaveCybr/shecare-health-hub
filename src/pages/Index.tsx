@@ -1,3 +1,4 @@
+// src/pages/Index.tsx - FIXED VERSION
 import Navbar from "@/components/Navbar";
 import HeroSection from "@/components/HeroSection";
 import AboutSection from "@/components/AboutSection";
@@ -7,23 +8,21 @@ import ArticlesSection from "@/components/ArticlesSection";
 import TeamSection from "@/components/TeamSection";
 import Footer from "@/components/Footer";
 import MapSection from "@/components/MapSection";
-import { AuthProvider } from "@/context/AuthContext";
 
+// ✅ REMOVED duplicate AuthProvider - already in App.tsx
 const Index = () => {
   return (
-    <AuthProvider>
-      <div className="min-h-screen">
-        <Navbar />
-        <HeroSection />
-        <AboutSection />
-        <MissionSection />
-        <StorySection />
-        <ArticlesSection />
-        <TeamSection />
-        <MapSection />
-        <Footer />
-      </div>
-    </AuthProvider>
+    <div className="min-h-screen">
+      <Navbar />
+      <HeroSection />
+      <AboutSection />
+      <MissionSection />
+      <StorySection />
+      <ArticlesSection />
+      <TeamSection />
+      <MapSection />
+      <Footer />
+    </div>
   );
 };
 

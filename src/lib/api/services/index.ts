@@ -1,8 +1,8 @@
 // src/lib/api/services/index.ts - FINAL FIX
 
-import { apiClient } from "../apiClient";
-import { API_ENDPOINTS } from "../config";
-import type { Language } from "../config";
+// import { apiClient } from "../apiClient";
+// import { API_ENDPOINTS } from "../config";
+// import type { Language } from "../config";
 
 /**
  * Type Definitions
@@ -220,29 +220,47 @@ export const authService = {
 /**
  * Questionnaire Service
  */
+// src/lib/api/services/index.ts - AUTH FIXED
+import { apiClient } from "../apiClient";
+import { API_ENDPOINTS } from "../config";
+import type { Language } from "../config";
+
+// ... (keep all type definitions same)
+
+/**
+ * Questionnaire Service - FIXED
+ */
 export const questionnaireService = {
+  // ✅ FIXED: Remove requireAuth: false
   async getQuestions(lang: Language = "id"): Promise<Question[]> {
     try {
+      console.log("📡 [questionnaireService] Fetching questions...");
+
       const response = await apiClient.get<any>(
         API_ENDPOINTS.QUESTIONNAIRE.GET_QUESTIONS,
-        { params: { lang }, requireAuth: false }
+        {
+          params: { lang },
+          // ✅ REMOVED: requireAuth: false - now defaults to TRUE
+        }
       );
 
-      console.log("📥 Raw questions response:", response);
+      console.log("📥 [questionnaireService] Raw response:", response);
 
-      // Extract array from nested structure
       const questions = extractArray<Question>(response.data);
+      console.log(
+        "✅ [questionnaireService] Parsed questions:",
+        questions.length
+      );
 
-      console.log("✅ Parsed questions:", questions.length);
-
-      // Filter active questions (if is_active field exists)
       const activeQuestions = questions.filter((q) => q.is_active !== false);
-
-      console.log("✅ Active questions:", activeQuestions.length);
+      console.log(
+        "✅ [questionnaireService] Active questions:",
+        activeQuestions.length
+      );
 
       return activeQuestions;
     } catch (error) {
-      console.error("❌ Get questions error:", error);
+      console.error("❌ [questionnaireService] Get questions error:", error);
       throw error;
     }
   },
@@ -250,12 +268,14 @@ export const questionnaireService = {
   async submitQuestionnaire(
     data: QuestionnaireSubmit
   ): Promise<{ submission_id: number }> {
+    console.log("📤 [questionnaireService] Submitting questionnaire...");
+
     const response = await apiClient.post<any>(
       API_ENDPOINTS.QUESTIONNAIRE.SUBMIT,
       data
+      // ✅ requireAuth defaults to TRUE
     );
 
-    // Handle nested response
     const result = response.data?.data || response.data;
 
     return {
@@ -272,10 +292,8 @@ export const questionnaireService = {
       { params: { lang } }
     );
 
-    // Handle nested response
     let resultData = response.data?.data || response.data;
 
-    // Ensure arrays
     if (resultData) {
       resultData.diseases = extractArray<Disease>(resultData.diseases || []);
       resultData.answers = extractArray<any>(resultData.answers || []);
@@ -334,6 +352,8 @@ export const questionnaireService = {
     return response.data!;
   },
 };
+
+// ✅ Keep other services same, just ensure no requireAuth: false
 
 /**
  * Admin Service

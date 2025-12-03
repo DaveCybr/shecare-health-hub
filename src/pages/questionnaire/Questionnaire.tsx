@@ -1,4 +1,4 @@
-// src/pages/questionnaire/Questionnaire.tsx
+// src/pages/questionnaire/Questionnaire.tsx - AUTH FIXED
 
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
@@ -21,7 +21,7 @@ import logoIcon from "@/assets/logo-icon.png";
 
 const Questionnaire = () => {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user, isLoading: authLoading } = useAuth();
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -35,17 +35,55 @@ const Questionnaire = () => {
     (localStorage.getItem(STORAGE_KEYS.LANGUAGE) as "id" | "en") || "id"
   );
 
-  // Load questions on mount
+  // ✅ Debug: Check auth state and token
   useEffect(() => {
-    loadQuestions();
-  }, [language]);
+    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+    console.log("🔍 [Questionnaire] Auth State:", {
+      isAuthenticated,
+      hasUser: !!user,
+      hasToken: !!token,
+      userName: user?.name,
+    });
+  }, [isAuthenticated, user]);
+
+  // ✅ Wait for auth to finish loading before fetching questions
+  useEffect(() => {
+    if (!authLoading) {
+      if (!isAuthenticated) {
+        console.log(
+          "⚠️ [Questionnaire] Not authenticated, redirecting to login"
+        );
+        navigate("/login", { state: { from: "/questionnaire" } });
+      } else {
+        console.log("✅ [Questionnaire] Authenticated, loading questions");
+        loadQuestions();
+      }
+    }
+  }, [authLoading, isAuthenticated]);
 
   const loadQuestions = async () => {
     try {
       setLoading(true);
       setError("");
+
+      // ✅ Double check token before API call
+      const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+      console.log("🔑 [Questionnaire] Retrieved token:", token);
+      if (!token) {
+        console.error("❌ [Questionnaire] No token found!");
+        setError("Session expired. Please login again.");
+        setTimeout(() => navigate("/login"), 2000);
+        return;
+      }
+
+      console.log(
+        "📡 [Questionnaire] Fetching questions with token:",
+        token.substring(0, 20) + "..."
+      );
+
+      // ✅ Call with requireAuth: true (default)
       const data = await questionnaireService.getQuestions(language);
-      console.log("📥 Fetched questions:", data.length);
+      console.log("📥 [Questionnaire] Fetched questions:", data.length);
 
       // Filter only active questions and sort by order
       const activeQuestions = data
@@ -58,9 +96,24 @@ const Questionnaire = () => {
       }
 
       setQuestions(activeQuestions);
-      console.log("✅ Loaded questions:", activeQuestions.length);
+      console.log(
+        "✅ [Questionnaire] Loaded questions:",
+        activeQuestions.length
+      );
     } catch (err: any) {
-      console.error("❌ Failed to load questions:", err);
+      console.error("❌ [Questionnaire] Failed to load questions:", err);
+
+      // ✅ Handle 401 Unauthorized specifically
+      if (err.status === 401 || err.error === "Unauthorized") {
+        setError("Session expired. Redirecting to login...");
+        localStorage.removeItem(STORAGE_KEYS.TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.USER);
+        setTimeout(() => {
+          navigate("/login", { state: { from: "/questionnaire" } });
+        }, 2000);
+        return;
+      }
+
       setError(err.message || "Gagal memuat pertanyaan. Silakan coba lagi.");
     } finally {
       setLoading(false);
@@ -99,9 +152,8 @@ const Questionnaire = () => {
       return;
     }
 
-    // Check if user is logged in
+    // ✅ Final auth check before submit
     if (!isAuthenticated) {
-      // Save answers to localStorage and redirect to login
       localStorage.setItem(
         "pending_questionnaire_answers",
         JSON.stringify(Array.from(answers.entries()))
@@ -114,6 +166,12 @@ const Questionnaire = () => {
       setSubmitting(true);
       setError("");
 
+      // ✅ Verify token exists
+      const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+      if (!token) {
+        throw new Error("No authentication token found. Please login again.");
+      }
+
       // Convert Map to API format
       const answersArray: Answer[] = Array.from(answers.entries()).map(
         ([question_id, answer_value]) => ({
@@ -125,14 +183,17 @@ const Questionnaire = () => {
         })
       );
 
-      console.log("📤 Submitting answers:", answersArray);
+      console.log("📤 [Questionnaire] Submitting answers:", {
+        count: answersArray.length,
+        token: token.substring(0, 20) + "...",
+      });
 
       const result = await questionnaireService.submitQuestionnaire({
         lang: language,
         answers: answersArray,
       });
 
-      console.log("✅ Submission successful:", result);
+      console.log("✅ [Questionnaire] Submission successful:", result);
 
       // Clear pending answers
       localStorage.removeItem("pending_questionnaire_answers");
@@ -140,7 +201,19 @@ const Questionnaire = () => {
       // Redirect to result page
       navigate(`/result/${result.submission_id}`);
     } catch (err: any) {
-      console.error("❌ Submission failed:", err);
+      console.error("❌ [Questionnaire] Submission failed:", err);
+
+      // ✅ Handle 401 specifically
+      if (err.status === 401) {
+        setError("Session expired. Please login again.");
+        localStorage.removeItem(STORAGE_KEYS.TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.USER);
+        setTimeout(() => {
+          navigate("/login", { state: { from: "/questionnaire" } });
+        }, 2000);
+        return;
+      }
+
       setError(err.message || "Gagal submit jawaban. Silakan coba lagi.");
       setSubmitting(false);
     }
@@ -234,6 +307,18 @@ const Questionnaire = () => {
     }
   };
 
+  // ✅ Show auth loading
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Loading state
   if (loading) {
     return (
@@ -283,14 +368,21 @@ const Questionnaire = () => {
               <img src={logoIcon} alt="SheCare Logo" className="w-10 h-10" />
               <span className="text-2xl font-bold text-accent">SheCare</span>
             </a>
-            <Button
-              variant="ghost"
-              onClick={() => navigate("/")}
-              className="flex items-center gap-2"
-            >
-              <ArrowLeft size={20} />
-              Kembali
-            </Button>
+            <div className="flex items-center gap-4">
+              {user && (
+                <span className="text-sm text-muted-foreground">
+                  {user.name}
+                </span>
+              )}
+              <Button
+                variant="ghost"
+                onClick={() => navigate("/")}
+                className="flex items-center gap-2"
+              >
+                <ArrowLeft size={20} />
+                Kembali
+              </Button>
+            </div>
           </div>
         </div>
       </nav>
@@ -372,11 +464,6 @@ const Questionnaire = () => {
 
         {/* Helper Text */}
         <p className="text-center text-sm text-muted-foreground mt-6">
-          {!isAuthenticated && (
-            <span className="block mb-2 text-yellow-600">
-              ⚠️ Anda belum login. Jawaban akan disimpan setelah login.
-            </span>
-          )}
           Jawaban Anda akan membantu kami memberikan analisis yang akurat.
         </p>
       </div>
