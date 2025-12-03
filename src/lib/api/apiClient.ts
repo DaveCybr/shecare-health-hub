@@ -1,4 +1,4 @@
-// src/lib/api/apiClient.ts - TOKEN HANDLING FIXED
+// src/lib/api/apiClient.ts - LOGIN ERROR FIX
 
 import { API_BASE_URL, REQUEST_TIMEOUT, STORAGE_KEYS } from "./config";
 
@@ -27,28 +27,30 @@ class ApiClient {
     this.defaultTimeout = timeout;
   }
 
-  // ✅ Get token from localStorage with validation
   private getToken(): string | null {
     const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
 
-    // Debug log
     if (!token) {
-      console.warn("⚠️ [ApiClient] No token found in localStorage");
-    } else {
-      console.log(
-        "🔑 [ApiClient] Token found:",
-        token.substring(0, 20) + "..."
-      );
+      console.warn("⚠️ [ApiClient] No token in localStorage");
+      return null;
     }
 
+    if (!token.includes(".")) {
+      console.error("❌ [ApiClient] Invalid token format!");
+      localStorage.removeItem(STORAGE_KEYS.TOKEN);
+      return null;
+    }
+
+    console.log(
+      "🔑 [ApiClient] Token retrieved:",
+      token.substring(0, 30) + "..."
+    );
     return token;
   }
 
   private buildURL(endpoint: string, params?: Record<string, any>): string {
-    // Handle absolute URLs
     if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) {
       const url = new URL(endpoint);
-
       if (params) {
         Object.entries(params).forEach(([key, value]) => {
           if (value !== undefined && value !== null) {
@@ -56,19 +58,15 @@ class ApiClient {
           }
         });
       }
-
       return url.toString();
     }
 
-    // Handle relative URLs
     const base = this.baseURL.endsWith("/")
       ? this.baseURL.slice(0, -1)
       : this.baseURL;
     const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-
     let fullURL = `${base}${path}`;
 
-    // Add query parameters
     if (params && Object.keys(params).length > 0) {
       const queryParams = new URLSearchParams();
       Object.entries(params).forEach(([key, value]) => {
@@ -82,7 +80,6 @@ class ApiClient {
     return fullURL;
   }
 
-  // ✅ Build headers with proper token handling
   private buildHeaders(requireAuth: boolean = true): HeadersInit {
     const headers: HeadersInit = {
       "Content-Type": "application/json",
@@ -91,33 +88,73 @@ class ApiClient {
 
     if (requireAuth) {
       const token = this.getToken();
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-        console.log("✅ [ApiClient] Authorization header added");
-      } else {
-        console.error("❌ [ApiClient] Token required but not found!");
+
+      if (!token) {
+        console.error("❌ [ApiClient] Auth required but no valid token found!");
+        throw {
+          success: false,
+          message: "Session expired. Please login again.",
+          error: "NO_TOKEN",
+          status: 401,
+        };
       }
+
+      headers["Authorization"] = `Bearer ${token}`;
+      console.log("✅ [ApiClient] Authorization header added");
     }
 
     return headers;
   }
 
-  private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
+  private async handleResponse<T>(
+    response: Response,
+    requireAuth: boolean = true
+  ): Promise<ApiResponse<T>> {
     const contentType = response.headers.get("content-type");
 
-    // ✅ Handle 401 Unauthorized
+    // ✅ Handle 401 with context awareness
     if (response.status === 401) {
-      console.error(
-        "❌ [ApiClient] 401 Unauthorized - Token invalid or expired"
-      );
+      console.error("❌ [ApiClient] 401 Unauthorized");
 
-      // Clear invalid token
-      localStorage.removeItem(STORAGE_KEYS.TOKEN);
-      localStorage.removeItem(STORAGE_KEYS.USER);
+      // Parse response body to get actual error message
+      let errorMessage = "Session expired. Please login again.";
+
+      if (contentType?.includes("application/json")) {
+        try {
+          const data = await response.json();
+          // ✅ Use backend's error message if available
+          errorMessage = data.message || errorMessage;
+
+          // ✅ Only clear token if this was an authenticated request
+          // For login failures (requireAuth: false), don't clear anything
+          if (requireAuth) {
+            console.log("🧹 [ApiClient] Clearing invalid token");
+            localStorage.removeItem(STORAGE_KEYS.TOKEN);
+            localStorage.removeItem(STORAGE_KEYS.USER);
+          } else {
+            console.log("⚠️ [ApiClient] Login failed - not clearing storage");
+          }
+
+          throw {
+            success: false,
+            message: errorMessage,
+            error: data.error || "Unauthorized",
+            status: 401,
+          };
+        } catch (parseError) {
+          // If JSON parsing fails, use default message
+        }
+      }
+
+      // Default 401 handling
+      if (requireAuth) {
+        localStorage.removeItem(STORAGE_KEYS.TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.USER);
+      }
 
       throw {
         success: false,
-        message: "Session expired. Please login again.",
+        message: errorMessage,
         error: "Unauthorized",
         status: 401,
       };
@@ -144,26 +181,17 @@ class ApiClient {
 
     if (contentType?.includes("text/html")) {
       const html = await response.text();
-      return {
-        success: true,
-        data: html as any,
-      };
+      return { success: true, data: html as any };
     }
 
     if (contentType?.includes("text/plain")) {
       const text = await response.text();
-      return {
-        success: true,
-        data: text as any,
-      };
+      return { success: true, data: text as any };
     }
 
     if (contentType?.includes("application/octet-stream")) {
       const blob = await response.blob();
-      return {
-        success: true,
-        data: blob as any,
-      };
+      return { success: true, data: blob as any };
     }
 
     const data = await response.json();
@@ -186,7 +214,13 @@ class ApiClient {
     } = config;
 
     const url = this.buildURL(endpoint, params);
-    const headers = this.buildHeaders(requireAuth);
+
+    let headers: HeadersInit;
+    try {
+      headers = this.buildHeaders(requireAuth);
+    } catch (error) {
+      throw error;
+    }
 
     console.log("📡 [ApiClient] Request:", {
       method: fetchConfig.method || "GET",
@@ -210,7 +244,8 @@ class ApiClient {
       });
 
       clearTimeout(timeoutId);
-      return await this.handleResponse<T>(response);
+      // ✅ Pass requireAuth to handleResponse for context
+      return await this.handleResponse<T>(response, requireAuth);
     } catch (error: any) {
       clearTimeout(timeoutId);
 

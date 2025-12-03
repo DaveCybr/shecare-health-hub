@@ -1,4 +1,4 @@
-// src/context/AuthContext.tsx - REACTIVE FIX
+// src/context/AuthContext.tsx - PRODUCTION FIX
 import {
   createContext,
   useContext,
@@ -43,55 +43,42 @@ interface AuthProviderProps {
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  // ✅ Add token state to trigger re-renders
-  const [hasToken, setHasToken] = useState(false);
 
+  // ✅ Initialize auth on mount
   useEffect(() => {
     console.log("🚀 [AuthContext] Initializing...");
     initAuth();
   }, []);
 
-  // ✅ Check token on every render
-  useEffect(() => {
-    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-    const tokenExists = !!token;
-
-    if (tokenExists !== hasToken) {
-      console.log("🔄 [AuthContext] Token state changed:", tokenExists);
-      setHasToken(tokenExists);
-    }
-  }, [user]); // Re-check when user changes
-
   const initAuth = async () => {
-    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-
-    console.log("🔍 [AuthContext] Init check:", {
-      hasToken: !!token,
-      tokenPreview: token?.substring(0, 30) + "...",
-    });
-
-    if (!token) {
-      console.log("❌ [AuthContext] No token");
-      setUser(null);
-      setHasToken(false);
-      setIsLoading(false);
-      return;
-    }
-
     try {
+      const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+      console.log("🔍 [AuthContext] Init check:", {
+        hasToken: !!token,
+        tokenPreview: token ? token.substring(0, 30) + "..." : "none",
+      });
+
+      if (!token) {
+        console.log("❌ [AuthContext] No token found");
+        setUser(null);
+        setIsLoading(false);
+        return;
+      }
+
+      // ✅ Validate token by fetching user
       console.log("📡 [AuthContext] Validating token...");
       const currentUser = await authService.getCurrentUser();
 
       setUser(currentUser);
-      setHasToken(true);
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(currentUser));
       console.log("✅ [AuthContext] Auth validated:", currentUser.name);
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ [AuthContext] Token validation failed:", error);
+
+      // ✅ Clear invalid token
       localStorage.removeItem(STORAGE_KEYS.TOKEN);
       localStorage.removeItem(STORAGE_KEYS.USER);
       setUser(null);
-      setHasToken(false);
     } finally {
       setIsLoading(false);
     }
@@ -112,21 +99,25 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         user: response.user.name,
       });
 
-      // ✅ Store token
+      // ✅ CRITICAL: Store token SYNCHRONOUSLY
       localStorage.setItem(STORAGE_KEYS.TOKEN, response.token);
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.user));
 
-      // ✅ Verify immediately
+      // ✅ Verify storage immediately
       const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
-      if (!storedToken) {
-        throw new Error("Failed to store token!");
+      if (!storedToken || storedToken !== response.token) {
+        throw new Error(
+          "Failed to persist token! Check browser settings or storage quota."
+        );
       }
 
-      console.log("✅ [AuthContext] Token stored, length:", storedToken.length);
+      console.log("✅ [AuthContext] Token verified in storage:", {
+        stored: storedToken.substring(0, 30) + "...",
+        matches: storedToken === response.token,
+      });
 
-      // ✅ Update states
+      // ✅ Update state after storage is confirmed
       setUser(response.user);
-      setHasToken(true);
 
       console.log("✅ [AuthContext] Login complete");
     } catch (error: any) {
@@ -151,18 +142,18 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         phone,
       });
 
-      // ✅ Store token
+      // ✅ Store token SYNCHRONOUSLY
       localStorage.setItem(STORAGE_KEYS.TOKEN, response.token);
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.user));
 
+      // ✅ Verify storage
       const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
-      if (!storedToken) {
-        throw new Error("Failed to store token!");
+      if (!storedToken || storedToken !== response.token) {
+        throw new Error("Failed to persist token!");
       }
 
-      // ✅ Update states
+      // ✅ Update state
       setUser(response.user);
-      setHasToken(true);
 
       console.log("✅ [AuthContext] Registration complete");
     } catch (error: any) {
@@ -192,18 +183,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     localStorage.removeItem(STORAGE_KEYS.TOKEN);
     localStorage.removeItem(STORAGE_KEYS.USER);
     setUser(null);
-    setHasToken(false);
 
     console.log("✅ [AuthContext] Logout complete");
   }, []);
 
-  // ✅ Listen to storage changes
+  // ✅ Listen to storage changes (for multi-tab sync)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === STORAGE_KEYS.TOKEN) {
         console.log("🔄 [AuthContext] Token changed in another tab");
         const newToken = e.newValue;
-        setHasToken(!!newToken);
         if (!newToken) {
           setUser(null);
         } else {
@@ -216,18 +205,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
-  // ✅ useMemo for isAuthenticated - recomputes when dependencies change
+  // ✅ Compute isAuthenticated based on BOTH user AND token
   const isAuthenticated = useMemo(() => {
-    const result = !!user && hasToken;
+    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+    const result = !!user && !!token;
 
     console.log("🔍 [AuthContext] isAuthenticated computed:", {
       hasUser: !!user,
-      hasToken,
+      hasToken: !!token,
       result,
     });
 
     return result;
-  }, [user, hasToken]);
+  }, [user]);
 
   const value = {
     user,

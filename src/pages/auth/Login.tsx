@@ -1,4 +1,4 @@
-// src/pages/auth/Login.tsx - ADD STORAGE CHECK
+// src/pages/auth/Login.tsx - ERROR DISPLAY FIX
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Eye, EyeOff, Mail, Lock, ArrowLeft } from "lucide-react";
@@ -33,7 +33,6 @@ const Login = () => {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // ✅ Check localStorage support
   useEffect(() => {
     try {
       const testKey = "__storage_test__";
@@ -48,7 +47,6 @@ const Login = () => {
     }
   }, []);
 
-  // ✅ Redirect if already authenticated
   useEffect(() => {
     const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
 
@@ -59,18 +57,10 @@ const Login = () => {
       authLoading,
     });
 
-    // ✅ Only redirect if BOTH user AND token exist
     if (isAuthenticated && user && token && !authLoading) {
       const from = (location.state as any)?.from || "/profile";
       console.log("✅ [Login] Fully authenticated, redirecting to:", from);
       navigate(from, { replace: true });
-    } else if (isAuthenticated && !token) {
-      // ✅ CRITICAL: isAuthenticated TRUE but no token = BUG
-      console.error(
-        "🐛 [Login] BUG DETECTED: isAuthenticated=true but no token!"
-      );
-      console.error("This should never happen. Forcing logout...");
-      // Don't redirect, stay on login page
     }
   }, [isAuthenticated, user, authLoading, navigate, location]);
 
@@ -114,13 +104,10 @@ const Login = () => {
       if (isLogin) {
         console.log("🔐 [Login Page] Attempting login...");
 
-        // ✅ Call login
         await login(formData.email, formData.password);
 
-        // ✅ Wait for state update
         await new Promise((resolve) => setTimeout(resolve, 500));
 
-        // ✅ Verify token exists
         const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
         const user = localStorage.getItem(STORAGE_KEYS.USER);
 
@@ -138,7 +125,6 @@ const Login = () => {
 
         console.log("✅ [Login Page] Login successful!");
 
-        // ✅ Navigate
         const from = (location.state as any)?.from || "/profile";
         console.log("🚀 [Login Page] Navigating to:", from);
         navigate(from, { replace: true });
@@ -152,10 +138,8 @@ const Login = () => {
           formData.phone || undefined
         );
 
-        // ✅ Wait for state update
         await new Promise((resolve) => setTimeout(resolve, 500));
 
-        // ✅ Verify token
         const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
 
         if (!token) {
@@ -168,20 +152,23 @@ const Login = () => {
     } catch (err: any) {
       console.error("❌ [Login Page] Auth error:", err);
 
+      // ✅ IMPROVED: Use backend's exact error message
       let errorMessage = "Terjadi kesalahan. Silakan coba lagi.";
 
       if (err.message) {
         errorMessage = err.message;
+      } else if (err.status === 401) {
+        // ✅ For 401 on login, backend message is already in err.message
+        // This handles "Email atau password salah"
+        errorMessage =
+          err.message ||
+          (isLogin ? "Email atau password salah" : "Email sudah terdaftar.");
       } else if (err.error === "NETWORK_ERROR") {
         errorMessage = "Gagal terhubung ke server. Periksa koneksi internet.";
       } else if (err.error === "TIMEOUT") {
         errorMessage = "Request timeout. Server tidak merespons.";
-      } else if (err.status === 401) {
-        errorMessage = isLogin
-          ? "Email atau password salah"
-          : "Email sudah terdaftar.";
       } else if (err.status === 422 || err.status === 400) {
-        errorMessage = "Data tidak valid";
+        errorMessage = err.message || "Data tidak valid";
       } else if (err.status >= 500) {
         errorMessage = "Server error. Coba lagi nanti.";
       }

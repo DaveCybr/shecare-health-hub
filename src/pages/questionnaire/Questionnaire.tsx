@@ -1,12 +1,18 @@
-// src/pages/questionnaire/Questionnaire.tsx - AUTH FIXED
+// src/pages/questionnaire/Questionnaire.tsx - DEBUG & FIX
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Send, Loader2 } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Send,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -21,7 +27,7 @@ import logoIcon from "@/assets/logo-icon.png";
 
 const Questionnaire = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, user, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, user, isLoading: authLoading, logout } = useAuth();
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -31,61 +37,75 @@ const Questionnaire = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [tokenWarning, setTokenWarning] = useState(false);
   const [language] = useState<"id" | "en">(
     (localStorage.getItem(STORAGE_KEYS.LANGUAGE) as "id" | "en") || "id"
   );
 
-  // ✅ Debug: Check auth state and token
+  // ✅ Store initial token to detect changes
+  const initialTokenRef = useRef<string | null>(null);
+
   useEffect(() => {
+    if (authLoading) {
+      console.log("⏳ [Questionnaire] Waiting for auth...");
+      return;
+    }
+
     const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-    console.log("🔍 [Questionnaire] Auth State:", {
+    console.log("🔍 [Questionnaire] Auth ready:", {
       isAuthenticated,
       hasUser: !!user,
       hasToken: !!token,
       userName: user?.name,
+      tokenPreview: token ? token.substring(0, 40) + "..." : "none",
     });
-  }, [isAuthenticated, user]);
 
-  // ✅ Wait for auth to finish loading before fetching questions
-  useEffect(() => {
-    if (!authLoading) {
-      if (!isAuthenticated) {
-        console.log(
-          "⚠️ [Questionnaire] Not authenticated, redirecting to login"
-        );
-        navigate("/login", { state: { from: "/questionnaire" } });
-      } else {
-        console.log("✅ [Questionnaire] Authenticated, loading questions");
-        loadQuestions();
-      }
+    if (!isAuthenticated || !token) {
+      console.log("⚠️ [Questionnaire] Not authenticated, redirecting");
+      navigate("/login", { state: { from: "/questionnaire" }, replace: true });
+      return;
     }
-  }, [authLoading, isAuthenticated]);
+
+    // ✅ Store initial token
+    initialTokenRef.current = token;
+
+    loadQuestions();
+  }, [authLoading, isAuthenticated, user]);
+
+  // ✅ Monitor token changes
+  useEffect(() => {
+    const checkToken = setInterval(() => {
+      const currentToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
+
+      if (initialTokenRef.current && currentToken !== initialTokenRef.current) {
+        console.error("🚨 [Questionnaire] TOKEN CHANGED!");
+        setTokenWarning(true);
+        clearInterval(checkToken);
+      }
+    }, 2000);
+
+    return () => clearInterval(checkToken);
+  }, []);
 
   const loadQuestions = async () => {
     try {
       setLoading(true);
       setError("");
 
-      // ✅ Double check token before API call
       const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-      console.log("🔑 [Questionnaire] Retrieved token:", token);
       if (!token) {
-        console.error("❌ [Questionnaire] No token found!");
-        setError("Session expired. Please login again.");
-        setTimeout(() => navigate("/login"), 2000);
-        return;
+        throw new Error("No authentication token found");
       }
 
-      console.log(
-        "📡 [Questionnaire] Fetching questions with token:",
-        token.substring(0, 20) + "..."
-      );
+      console.log("📡 [Questionnaire] Fetching questions with token:", {
+        tokenLength: token.length,
+        tokenPreview: token.substring(0, 40) + "...",
+        fullToken: token, // ✅ DEBUG: Log full token
+      });
 
-      // ✅ Call with requireAuth: true (default)
       const data = await questionnaireService.getQuestions(language);
-      console.log("📥 [Questionnaire] Fetched questions:", data.length);
+      console.log("📥 [Questionnaire] Received:", data.length, "questions");
 
-      // Filter only active questions and sort by order
       const activeQuestions = data
         .filter((q) => q.is_active === undefined || q.is_active === true)
         .sort((a, b) => a.order_number - b.order_number);
@@ -96,21 +116,23 @@ const Questionnaire = () => {
       }
 
       setQuestions(activeQuestions);
-      console.log(
-        "✅ [Questionnaire] Loaded questions:",
-        activeQuestions.length
-      );
+      console.log("✅ [Questionnaire] Loaded:", activeQuestions.length);
     } catch (err: any) {
-      console.error("❌ [Questionnaire] Failed to load questions:", err);
+      console.error("❌ [Questionnaire] Load error:", err);
 
-      // ✅ Handle 401 Unauthorized specifically
-      if (err.status === 401 || err.error === "Unauthorized") {
+      if (
+        err.status === 401 ||
+        err.error === "Unauthorized" ||
+        err.error === "NO_TOKEN"
+      ) {
         setError("Session expired. Redirecting to login...");
-        localStorage.removeItem(STORAGE_KEYS.TOKEN);
-        localStorage.removeItem(STORAGE_KEYS.USER);
-        setTimeout(() => {
-          navigate("/login", { state: { from: "/questionnaire" } });
-        }, 2000);
+        // logout();
+        // setTimeout(() => {
+        //   navigate("/login", {
+        //     state: { from: "/questionnaire" },
+        //     replace: true,
+        //   });
+        // }, 2000);
         return;
       }
 
@@ -152,69 +174,125 @@ const Questionnaire = () => {
       return;
     }
 
-    // ✅ Final auth check before submit
-    if (!isAuthenticated) {
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("🚀 [Questionnaire] SUBMIT STARTED");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+    // ✅ STEP 1: Verify Auth State
+    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+    const userStr = localStorage.getItem(STORAGE_KEYS.USER);
+
+    console.log("📋 [Step 1] Auth State:", {
+      isAuthenticated,
+      hasUser: !!user,
+      hasToken: !!token,
+      tokenLength: token?.length || 0,
+      tokenPreview: token ? token.substring(0, 40) + "..." : "none",
+      userFromStorage: userStr,
+    });
+
+    if (!isAuthenticated || !user || !token) {
+      console.error("❌ [Step 1] FAILED: Not authenticated!");
+      setError("Session expired. Please login again.");
+
       localStorage.setItem(
         "pending_questionnaire_answers",
         JSON.stringify(Array.from(answers.entries()))
       );
-      navigate("/login", { state: { from: "/questionnaire" } });
+
+      // setTimeout(() => {
+      //   logout();
+      //   navigate("/login", {
+      //     state: { from: "/questionnaire" },
+      //     replace: true,
+      //   });
+      // }, 2000);
       return;
     }
+
+    // ✅ STEP 2: Check Token Validity
+    console.log("🔍 [Step 2] Token Details:", {
+      fullToken: token,
+      tokenParts: token.split(".").length, // Should be 3 for JWT
+      isInitialToken: token === initialTokenRef.current,
+    });
+
+    if (token.split(".").length !== 3) {
+      console.error("❌ [Step 2] FAILED: Invalid JWT format!");
+      setError("Invalid token format. Please login again.");
+      logout();
+      // setTimeout(() => {
+      //   navigate("/login", {
+      //     state: { from: "/questionnaire" },
+      //     replace: true,
+      //   });
+      // }, 2000);
+      return;
+    }
+
+    // ✅ STEP 3: Prepare Payload
+    const answersArray: Answer[] = Array.from(answers.entries()).map(
+      ([question_id, answer_value]) => ({
+        question_id,
+        answer_value:
+          typeof answer_value === "string"
+            ? parseInt(answer_value)
+            : answer_value,
+      })
+    );
+
+    console.log("📦 [Step 3] Payload:", {
+      language,
+      answerCount: answersArray.length,
+      answers: answersArray,
+    });
 
     try {
       setSubmitting(true);
       setError("");
 
-      // ✅ Verify token exists
-      const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-      if (!token) {
-        throw new Error("No authentication token found. Please login again.");
-      }
-
-      // Convert Map to API format
-      const answersArray: Answer[] = Array.from(answers.entries()).map(
-        ([question_id, answer_value]) => ({
-          question_id,
-          answer_value:
-            typeof answer_value === "string"
-              ? parseInt(answer_value)
-              : answer_value,
-        })
-      );
-
-      console.log("📤 [Questionnaire] Submitting answers:", {
-        count: answersArray.length,
-        token: token.substring(0, 20) + "...",
-      });
+      // ✅ STEP 4: Submit
+      console.log("📤 [Step 4] Submitting to API...");
 
       const result = await questionnaireService.submitQuestionnaire({
         lang: language,
         answers: answersArray,
       });
 
-      console.log("✅ [Questionnaire] Submission successful:", result);
+      console.log("✅ [Step 4] SUCCESS:", result);
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-      // Clear pending answers
       localStorage.removeItem("pending_questionnaire_answers");
-
-      // Redirect to result page
-      navigate(`/result/${result.submission_id}`);
+      navigate(`/result/${result.submission_id}`, { replace: true });
     } catch (err: any) {
-      console.error("❌ [Questionnaire] Submission failed:", err);
+      console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      console.error("❌ [Step 4] SUBMIT FAILED");
+      console.error("Error details:", {
+        status: err.status,
+        error: err.error,
+        message: err.message,
+        fullError: err,
+      });
+      console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-      // ✅ Handle 401 specifically
-      if (err.status === 401) {
+      if (
+        err.status === 401 ||
+        err.error === "Unauthorized" ||
+        err.error === "NO_TOKEN"
+      ) {
         setError("Session expired. Please login again.");
-        localStorage.removeItem(STORAGE_KEYS.TOKEN);
-        localStorage.removeItem(STORAGE_KEYS.USER);
-        setTimeout(() => {
-          navigate("/login", { state: { from: "/questionnaire" } });
-        }, 2000);
+        logout();
+        // setTimeout(() => {
+        //   navigate("/login", {
+        //     state: { from: "/questionnaire" },
+        //     replace: true,
+        //   });
+        // }, 2000);
         return;
       }
 
       setError(err.message || "Gagal submit jawaban. Silakan coba lagi.");
+    } finally {
       setSubmitting(false);
     }
   };
@@ -307,31 +385,21 @@ const Questionnaire = () => {
     }
   };
 
-  // ✅ Show auth loading
-  if (authLoading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Checking authentication...</p>
+          <p className="text-muted-foreground">
+            {authLoading
+              ? "Checking authentication..."
+              : "Memuat pertanyaan..."}
+          </p>
         </div>
       </div>
     );
   }
 
-  // Loading state
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Memuat pertanyaan...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Error state
   if (error && questions.length === 0) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -360,14 +428,16 @@ const Questionnaire = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-accent/5 to-background">
-      {/* Header */}
       <nav className="bg-card shadow-md sticky top-0 z-50">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
-            <a href="/" className="flex items-center space-x-3">
+            <button
+              onClick={() => navigate("/")}
+              className="flex items-center space-x-3"
+            >
               <img src={logoIcon} alt="SheCare Logo" className="w-10 h-10" />
               <span className="text-2xl font-bold text-accent">SheCare</span>
-            </a>
+            </button>
             <div className="flex items-center gap-4">
               {user && (
                 <span className="text-sm text-muted-foreground">
@@ -387,9 +457,29 @@ const Questionnaire = () => {
         </div>
       </nav>
 
-      {/* Main Content */}
       <div className="container mx-auto px-4 py-12 max-w-3xl">
-        {/* Progress */}
+        {/* ✅ Token Warning */}
+        {tokenWarning && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Peringatan Keamanan</AlertTitle>
+            <AlertDescription>
+              Token berubah selama sesi. Untuk keamanan, silakan login ulang.
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  logout();
+                  navigate("/login");
+                }}
+                className="mt-2 w-full"
+              >
+                Login Ulang
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="mb-8">
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm font-medium text-muted-foreground">
@@ -402,7 +492,6 @@ const Questionnaire = () => {
           <Progress value={progress} className="h-2" />
         </div>
 
-        {/* Question Card */}
         <Card className="shadow-xl">
           <CardHeader>
             <CardTitle className="text-2xl">
@@ -418,7 +507,6 @@ const Questionnaire = () => {
 
             {renderQuestionInput()}
 
-            {/* Navigation Buttons */}
             <div className="flex gap-3 pt-6">
               <Button
                 variant="outline"
@@ -442,7 +530,7 @@ const Questionnaire = () => {
               ) : (
                 <Button
                   onClick={handleSubmit}
-                  disabled={!canGoNext() || submitting}
+                  disabled={!canGoNext() || submitting || tokenWarning}
                   className="flex-1 bg-primary hover:bg-primary/90"
                 >
                   {submitting ? (
@@ -462,7 +550,6 @@ const Questionnaire = () => {
           </CardContent>
         </Card>
 
-        {/* Helper Text */}
         <p className="text-center text-sm text-muted-foreground mt-6">
           Jawaban Anda akan membantu kami memberikan analisis yang akurat.
         </p>
