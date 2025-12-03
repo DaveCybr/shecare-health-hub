@@ -1,8 +1,8 @@
-// src/lib/api/services/index.ts - FINAL FIX
+// src/lib/api/services/index.ts - COMPLETE FIXED VERSION
 
-// import { apiClient } from "../apiClient";
-// import { API_ENDPOINTS } from "../config";
-// import type { Language } from "../config";
+import { apiClient } from "../apiClient";
+import { API_ENDPOINTS } from "../config";
+import type { Language } from "../config";
 
 /**
  * Type Definitions
@@ -35,10 +35,10 @@ export interface AuthResponse {
   user: User;
 }
 
-// Question Types (Updated to match backend)
+// Question Types
 export interface Question {
   id: number;
-  question_text: string; // Backend uses single field, not _id/_en
+  question_text: string;
   question_type: "scale" | "boolean" | "multiple_choice";
   min_value?: number;
   max_value?: number;
@@ -62,14 +62,14 @@ export interface Disease {
   id: number;
   name_id?: string;
   name_en?: string;
-  name?: string; // Backend might use single field
+  name?: string;
   description_id?: string;
   description_en?: string;
-  description?: string; // Backend might use single field
+  description?: string;
   severity: "low" | "moderate" | "high" | "critical";
   recommendations_id?: string;
   recommendations_en?: string;
-  recommendations?: string; // Backend might use single field
+  recommendations?: string;
   probability?: number;
 }
 
@@ -109,25 +109,21 @@ export interface HistoryResponse {
 function extractArray<T>(responseData: any): T[] {
   console.log("🔍 Extracting array from:", responseData);
 
-  // Direct array
   if (Array.isArray(responseData)) {
     console.log("✅ Direct array:", responseData.length);
     return responseData;
   }
 
-  // Check nested data.data (backend format)
   if (responseData?.data?.data && Array.isArray(responseData.data.data)) {
     console.log("✅ Found nested data.data:", responseData.data.data.length);
     return responseData.data.data;
   }
 
-  // Check data key
   if (responseData?.data && Array.isArray(responseData.data)) {
     console.log("✅ Found data array:", responseData.data.length);
     return responseData.data;
   }
 
-  // Check common wrapper keys
   const wrapperKeys = ["questions", "items", "results", "list"];
   for (const key of wrapperKeys) {
     if (responseData?.[key] && Array.isArray(responseData[key])) {
@@ -136,7 +132,6 @@ function extractArray<T>(responseData: any): T[] {
     }
   }
 
-  // Single object, wrap in array
   if (
     responseData &&
     typeof responseData === "object" &&
@@ -153,7 +148,6 @@ function extractArray<T>(responseData: any): T[] {
 /**
  * Auth Service
  */
-// src/lib/api/services.ts
 export const authService = {
   async login(credentials: LoginRequest): Promise<AuthResponse> {
     const response = await apiClient.post<any>(
@@ -162,7 +156,6 @@ export const authService = {
       { requireAuth: false }
     );
 
-    // Handle nested response structure
     const data = response.data?.data || response.data;
 
     return {
@@ -178,7 +171,6 @@ export const authService = {
       { requireAuth: false }
     );
 
-    // Handle nested response structure
     const data = response.data?.data || response.data;
 
     return {
@@ -189,10 +181,7 @@ export const authService = {
 
   async getCurrentUser(): Promise<User> {
     const response = await apiClient.get<any>(API_ENDPOINTS.AUTH.ME);
-
-    // Handle nested response structure
     const data = response.data?.data || response.data;
-
     return data;
   },
 
@@ -221,28 +210,14 @@ export const authService = {
 /**
  * Questionnaire Service
  */
-// src/lib/api/services/index.ts - AUTH FIXED
-import { apiClient } from "../apiClient";
-import { API_ENDPOINTS } from "../config";
-import type { Language } from "../config";
-
-// ... (keep all type definitions same)
-
-/**
- * Questionnaire Service - FIXED
- */
 export const questionnaireService = {
-  // ✅ FIXED: Remove requireAuth: false
   async getQuestions(lang: Language = "id"): Promise<Question[]> {
     try {
       console.log("📡 [questionnaireService] Fetching questions...");
 
       const response = await apiClient.get<any>(
         API_ENDPOINTS.QUESTIONNAIRE.GET_QUESTIONS,
-        {
-          params: { lang },
-          // ✅ REMOVED: requireAuth: false - now defaults to TRUE
-        }
+        { params: { lang } }
       );
 
       console.log("📥 [questionnaireService] Raw response:", response);
@@ -274,7 +249,6 @@ export const questionnaireService = {
     const response = await apiClient.post<any>(
       API_ENDPOINTS.QUESTIONNAIRE.SUBMIT,
       data
-      // ✅ requireAuth defaults to TRUE
     );
 
     const result = response.data?.data || response.data;
@@ -353,8 +327,6 @@ export const questionnaireService = {
     return response.data!;
   },
 };
-
-// ✅ Keep other services same, just ensure no requireAuth: false
 
 /**
  * Admin Service
@@ -487,7 +459,7 @@ export const statisticsService = {
 };
 
 /**
- * Articles Service
+ * Articles Service - FIXED FOR NESTED STRUCTURE
  */
 export const articlesService = {
   async getArticles(limit: number = 10, query?: string): Promise<any> {
@@ -495,7 +467,44 @@ export const articlesService = {
       params: { limit, q: query },
       requireAuth: false,
     });
-    return response.data;
+
+    console.log("📥 Raw articles response:", response);
+
+    let articlesData = response.data as any;
+
+    // Handle deeply nested structure: { data: { data: { articles: [...] } } }
+    if (articlesData?.data?.data?.articles) {
+      return {
+        articles: articlesData.data.data.articles,
+        count: articlesData.count || articlesData.data.data.articles.length,
+        message: articlesData.data.data.message,
+      };
+    } else if (articlesData?.data?.articles) {
+      return {
+        articles: articlesData.data.articles,
+        count: articlesData.count || articlesData.data.articles.length,
+      };
+    } else if (articlesData?.articles) {
+      return {
+        articles: articlesData.articles,
+        count: articlesData.count || articlesData.articles.length,
+      };
+    } else if (Array.isArray(articlesData?.data)) {
+      return {
+        articles: articlesData.data,
+        count: articlesData.count || articlesData.data.length,
+      };
+    } else if (Array.isArray(articlesData)) {
+      return {
+        articles: articlesData,
+        count: articlesData.length,
+      };
+    }
+
+    return {
+      articles: [],
+      count: 0,
+    };
   },
 };
 
