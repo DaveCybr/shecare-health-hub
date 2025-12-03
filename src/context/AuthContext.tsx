@@ -42,28 +42,31 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Initialize auth state on mount
+  // Initialize auth state by calling auth/me
   useEffect(() => {
     const initAuth = async () => {
       const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-      const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
 
-      if (token && storedUser) {
-        try {
-          // Validate token by fetching current user
-          const currentUser = await authService.getCurrentUser();
-          setUser(currentUser);
+      console.log("🔍 Initializing auth...", { hasToken: !!token });
 
-          // Update stored user data
-          localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(currentUser));
-        } catch (error) {
-          // Token invalid or expired
-          console.error("Auth validation failed:", error);
-          logout();
-        }
+      if (!token) {
+        console.log("❌ No token found, user not authenticated");
+        setIsLoading(false);
+        return;
       }
 
-      setIsLoading(false);
+      try {
+        console.log("📡 Fetching user from auth/me...");
+        const currentUser = await authService.getCurrentUser();
+
+        setUser(currentUser);
+        console.log("✅ Auth validated from API:", currentUser);
+      } catch (error) {
+        console.error("❌ Auth validation failed:", error);
+        logout();
+      } finally {
+        setIsLoading(false);
+      }
     };
 
     initAuth();
@@ -71,23 +74,28 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const login = async (email: string, password: string) => {
     try {
-      setIsLoading(true);
+      console.log("🔐 Attempting login...");
 
       const response: AuthResponse = await authService.login({
         email,
         password,
       });
 
-      // Store token and user data
-      localStorage.setItem(STORAGE_KEYS.TOKEN, response.token);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.user));
+      console.log("✅ Login response:", response);
 
+      // ✅ Store token first
+      localStorage.setItem(STORAGE_KEYS.TOKEN, response.token);
+
+      // ✅ Use user from login response directly
       setUser(response.user);
+
+      console.log(
+        "✅ Login successful, user set from response:",
+        response.user
+      );
     } catch (error: any) {
-      console.error("Login error:", error);
-      throw new Error(error.message || "Login gagal. Silakan coba lagi.");
-    } finally {
-      setIsLoading(false);
+      console.error("❌ Login error:", error);
+      throw error;
     }
   };
 
@@ -98,7 +106,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     phone?: string
   ) => {
     try {
-      setIsLoading(true);
+      console.log("📝 Attempting registration...");
 
       const response: AuthResponse = await authService.register({
         name,
@@ -107,34 +115,41 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         phone,
       });
 
-      // Store token and user data
-      localStorage.setItem(STORAGE_KEYS.TOKEN, response.token);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.user));
+      console.log("✅ Register response:", response);
 
+      // ✅ Store token first
+      localStorage.setItem(STORAGE_KEYS.TOKEN, response.token);
+
+      // ✅ Use user from register response directly
       setUser(response.user);
+
+      console.log(
+        "✅ Registration successful, user set from response:",
+        response.user
+      );
     } catch (error: any) {
-      console.error("Register error:", error);
-      throw new Error(error.message || "Pendaftaran gagal. Silakan coba lagi.");
-    } finally {
-      setIsLoading(false);
+      console.error("❌ Register error:", error);
+      throw error;
     }
   };
 
   const refreshUser = async () => {
     try {
+      console.log("🔄 Refreshing user from API...");
       const currentUser = await authService.getCurrentUser();
       setUser(currentUser);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(currentUser));
+      console.log("✅ User refreshed:", currentUser);
     } catch (error) {
-      console.error("Failed to refresh user:", error);
+      console.error("❌ Failed to refresh user:", error);
+      logout();
     }
   };
 
   const logout = () => {
+    console.log("👋 Logging out...");
     localStorage.removeItem(STORAGE_KEYS.TOKEN);
     localStorage.removeItem(STORAGE_KEYS.USER);
     setUser(null);
-    window.location.href = "/";
   };
 
   const value = {

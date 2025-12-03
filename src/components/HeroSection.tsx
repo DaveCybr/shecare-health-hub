@@ -1,8 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { ArrowUp } from "lucide-react";
 import heroBg from "@/assets/hero-bg.jpg";
+import { useNavigate } from "react-router-dom";
 
 const HeroSection = () => {
+  const navigate = useNavigate();
   return (
     <section
       id="beranda"
@@ -54,7 +56,7 @@ const HeroSection = () => {
                 flex items-center gap-3
                 group
               "
-              onClick={() => (window.location.href = "/analisa")}
+              onClick={() => navigate("/questionnaire")}
             >
               <span>Mulai Analisa</span>
               <ArrowUp

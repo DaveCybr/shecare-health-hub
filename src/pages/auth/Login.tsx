@@ -23,20 +23,17 @@ const Login = () => {
     phone: "",
   });
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const [debugInfo, setDebugInfo] = useState<string>("");
 
   const handleSubmit = async () => {
     setError("");
     setDebugInfo("");
-    setLoading(true);
 
     console.log("🚀 Form submitted:", { isLogin, email: formData.email });
 
     // Validation
     if (!formData.email || !formData.password) {
       setError("Email dan password harus diisi");
-      setLoading(false);
       return;
     }
 
@@ -44,24 +41,21 @@ const Login = () => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
       setError("Format email tidak valid");
-      setLoading(false);
       return;
     }
 
     if (!isLogin) {
       if (!formData.name) {
         setError("Nama lengkap harus diisi");
-        setLoading(false);
         return;
       }
       if (formData.password !== formData.confirmPassword) {
         setError("Password tidak cocok");
-        setLoading(false);
+
         return;
       }
       if (formData.password.length < 6) {
         setError("Password minimal 6 karakter");
-        setLoading(false);
         return;
       }
     }
@@ -137,13 +131,11 @@ const Login = () => {
       setDebugInfo(
         `Error: ${err.error || "Unknown"} (Status: ${err.status || "N/A"})`
       );
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !loading) {
+    if (e.key === "Enter" && !authLoading) {
       handleSubmit();
     }
   };
@@ -223,7 +215,7 @@ const Login = () => {
                     }
                     onKeyPress={handleKeyPress}
                     className="h-12"
-                    disabled={loading}
+                    disabled={authLoading}
                   />
                 </div>
               )}
@@ -248,7 +240,7 @@ const Login = () => {
                     }
                     onKeyPress={handleKeyPress}
                     className="h-12 pl-10"
-                    disabled={loading}
+                    disabled={authLoading}
                     autoComplete="email"
                   />
                 </div>
@@ -271,7 +263,7 @@ const Login = () => {
                     }
                     onKeyPress={handleKeyPress}
                     className="h-12"
-                    disabled={loading}
+                    disabled={authLoading}
                   />
                 </div>
               )}
@@ -296,14 +288,14 @@ const Login = () => {
                     }
                     onKeyPress={handleKeyPress}
                     className="h-12 pl-10 pr-10"
-                    disabled={loading}
+                    disabled={authLoading}
                     autoComplete={isLogin ? "current-password" : "new-password"}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    disabled={loading}
+                    disabled={authLoading}
                   >
                     {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                   </button>
@@ -337,7 +329,7 @@ const Login = () => {
                       }
                       onKeyPress={handleKeyPress}
                       className="h-12 pl-10"
-                      disabled={loading}
+                      disabled={authLoading}
                       autoComplete="new-password"
                     />
                   </div>
@@ -353,7 +345,7 @@ const Login = () => {
                       alert("Fitur lupa password akan segera tersedia");
                     }}
                     className="text-sm text-primary hover:text-primary/80 font-medium"
-                    disabled={loading}
+                    disabled={authLoading}
                   >
                     Lupa password?
                   </button>
@@ -364,9 +356,9 @@ const Login = () => {
               <Button
                 onClick={handleSubmit}
                 className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-lg"
-                disabled={loading}
+                disabled={authLoading}
               >
-                {loading ? (
+                {authLoading ? (
                   <span className="flex items-center gap-2">
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     Memproses...
@@ -408,7 +400,7 @@ const Login = () => {
                     });
                   }}
                   className="text-primary hover:text-primary/80 font-semibold"
-                  disabled={loading}
+                  disabled={authLoading}
                 >
                   {isLogin ? "Daftar sekarang" : "Masuk di sini"}
                 </button>

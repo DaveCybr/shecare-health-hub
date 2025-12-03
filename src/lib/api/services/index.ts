@@ -1,4 +1,4 @@
-// src/lib/api/services/index.ts
+// src/lib/api/services/index.ts - FINAL FIX
 
 import { apiClient } from "../apiClient";
 import { API_ENDPOINTS } from "../config";
@@ -35,17 +35,16 @@ export interface AuthResponse {
   user: User;
 }
 
-// Question Types
+// Question Types (Updated to match backend)
 export interface Question {
   id: number;
-  question_text_id: string;
-  question_text_en: string;
+  question_text: string; // Backend uses single field, not _id/_en
   question_type: "scale" | "boolean" | "multiple_choice";
   min_value?: number;
   max_value?: number;
   options?: string[];
   order_number: number;
-  is_active: boolean;
+  is_active?: boolean;
 }
 
 export interface Answer {
@@ -61,13 +60,16 @@ export interface QuestionnaireSubmit {
 // Result Types
 export interface Disease {
   id: number;
-  name_id: string;
-  name_en: string;
-  description_id: string;
-  description_en: string;
+  name_id?: string;
+  name_en?: string;
+  name?: string; // Backend might use single field
+  description_id?: string;
+  description_en?: string;
+  description?: string; // Backend might use single field
   severity: "low" | "moderate" | "high" | "critical";
-  recommendations_id: string;
-  recommendations_en: string;
+  recommendations_id?: string;
+  recommendations_en?: string;
+  recommendations?: string; // Backend might use single field
   probability?: number;
 }
 
@@ -101,51 +103,117 @@ export interface HistoryResponse {
 }
 
 /**
+ * Helper: Extract array from nested response
+ */
+function extractArray<T>(responseData: any): T[] {
+  console.log("🔍 Extracting array from:", responseData);
+
+  // Direct array
+  if (Array.isArray(responseData)) {
+    console.log("✅ Direct array:", responseData.length);
+    return responseData;
+  }
+
+  // Check nested data.data (backend format)
+  if (responseData?.data?.data && Array.isArray(responseData.data.data)) {
+    console.log("✅ Found nested data.data:", responseData.data.data.length);
+    return responseData.data.data;
+  }
+
+  // Check data key
+  if (responseData?.data && Array.isArray(responseData.data)) {
+    console.log("✅ Found data array:", responseData.data.length);
+    return responseData.data;
+  }
+
+  // Check common wrapper keys
+  const wrapperKeys = ["questions", "items", "results", "list"];
+  for (const key of wrapperKeys) {
+    if (responseData?.[key] && Array.isArray(responseData[key])) {
+      console.log(`✅ Found ${key} array:`, responseData[key].length);
+      return responseData[key];
+    }
+  }
+
+  // Single object, wrap in array
+  if (
+    responseData &&
+    typeof responseData === "object" &&
+    !Array.isArray(responseData)
+  ) {
+    console.log("⚠️ Single object, wrapping in array");
+    return [responseData];
+  }
+
+  console.warn("⚠️ Could not extract array, returning empty array");
+  return [];
+}
+
+/**
  * Auth Service
  */
+// src/lib/api/services.ts
 export const authService = {
   async login(credentials: LoginRequest): Promise<AuthResponse> {
-    const response = await apiClient.post<AuthResponse>(
+    const response = await apiClient.post<any>(
       API_ENDPOINTS.AUTH.LOGIN,
       credentials,
       { requireAuth: false }
     );
-    return response.data!;
+
+    // Handle nested response structure
+    const data = response.data?.data || response.data;
+
+    return {
+      user: data.user,
+      token: data.token,
+    };
   },
 
   async register(userData: RegisterRequest): Promise<AuthResponse> {
-    const response = await apiClient.post<AuthResponse>(
+    const response = await apiClient.post<any>(
       API_ENDPOINTS.AUTH.REGISTER,
       userData,
       { requireAuth: false }
     );
-    return response.data!;
+
+    // Handle nested response structure
+    const data = response.data?.data || response.data;
+
+    return {
+      user: data.user,
+      token: data.token,
+    };
   },
 
   async getCurrentUser(): Promise<User> {
-    const response = await apiClient.get<User>(API_ENDPOINTS.AUTH.ME);
-    return response.data!;
+    const response = await apiClient.get<any>(API_ENDPOINTS.AUTH.ME);
+
+    // Handle nested response structure
+    const data = response.data?.data || response.data;
+
+    return data;
   },
 
   async forgotPassword(email: string): Promise<{ message: string }> {
-    const response = await apiClient.post<{ message: string }>(
+    const response = await apiClient.post<any>(
       API_ENDPOINTS.AUTH.FORGOT_PASSWORD,
       { email },
       { requireAuth: false }
     );
-    return response.data!;
+    return { message: response.data?.message || "Success" };
   },
 
   async resetPassword(
     token: string,
     password: string
   ): Promise<{ message: string }> {
-    const response = await apiClient.post<{ message: string }>(
+    const response = await apiClient.post<any>(
       API_ENDPOINTS.AUTH.RESET_PASSWORD,
       { token, password },
       { requireAuth: false }
     );
-    return response.data!;
+    return { message: response.data?.message || "Success" };
   },
 };
 
@@ -154,32 +222,66 @@ export const authService = {
  */
 export const questionnaireService = {
   async getQuestions(lang: Language = "id"): Promise<Question[]> {
-    const response = await apiClient.get<Question[]>(
-      API_ENDPOINTS.QUESTIONNAIRE.GET_QUESTIONS,
-      { params: { lang }, requireAuth: false }
-    );
-    return response.data!;
+    try {
+      const response = await apiClient.get<any>(
+        API_ENDPOINTS.QUESTIONNAIRE.GET_QUESTIONS,
+        { params: { lang }, requireAuth: false }
+      );
+
+      console.log("📥 Raw questions response:", response);
+
+      // Extract array from nested structure
+      const questions = extractArray<Question>(response.data);
+
+      console.log("✅ Parsed questions:", questions.length);
+
+      // Filter active questions (if is_active field exists)
+      const activeQuestions = questions.filter((q) => q.is_active !== false);
+
+      console.log("✅ Active questions:", activeQuestions.length);
+
+      return activeQuestions;
+    } catch (error) {
+      console.error("❌ Get questions error:", error);
+      throw error;
+    }
   },
 
   async submitQuestionnaire(
     data: QuestionnaireSubmit
   ): Promise<{ submission_id: number }> {
-    const response = await apiClient.post<{ submission_id: number }>(
+    const response = await apiClient.post<any>(
       API_ENDPOINTS.QUESTIONNAIRE.SUBMIT,
       data
     );
-    return response.data!;
+
+    // Handle nested response
+    const result = response.data?.data || response.data;
+
+    return {
+      submission_id: result.submission_id || result.id,
+    };
   },
 
   async getResult(
     submissionId: string,
     lang: Language = "id"
   ): Promise<QuestionnaireResult> {
-    const response = await apiClient.get<QuestionnaireResult>(
+    const response = await apiClient.get<any>(
       API_ENDPOINTS.QUESTIONNAIRE.GET_RESULT(submissionId),
       { params: { lang } }
     );
-    return response.data!;
+
+    // Handle nested response
+    let resultData = response.data?.data || response.data;
+
+    // Ensure arrays
+    if (resultData) {
+      resultData.diseases = extractArray<Disease>(resultData.diseases || []);
+      resultData.answers = extractArray<any>(resultData.answers || []);
+    }
+
+    return resultData;
   },
 
   async getHistory(
@@ -187,11 +289,19 @@ export const questionnaireService = {
     offset: number = 0,
     lang: Language = "id"
   ): Promise<HistoryResponse> {
-    const response = await apiClient.get<HistoryResponse>(
+    const response = await apiClient.get<any>(
       API_ENDPOINTS.QUESTIONNAIRE.HISTORY,
       { params: { limit, offset, lang } }
     );
-    return response.data!;
+
+    const data = response.data?.data || response.data || {};
+
+    return {
+      data: extractArray<HistoryItem>(data.data || data),
+      total: data.total || data.count || 0,
+      limit: data.limit || limit,
+      offset: data.offset || offset,
+    };
   },
 
   async exportToPDF(
@@ -202,7 +312,7 @@ export const questionnaireService = {
       API_ENDPOINTS.QUESTIONNAIRE.EXPORT_PDF(submissionId),
       { params: { lang } }
     );
-    return response.data!; // HTML string
+    return response.data!;
   },
 
   async exportToExcel(
@@ -213,7 +323,7 @@ export const questionnaireService = {
       API_ENDPOINTS.QUESTIONNAIRE.EXPORT_EXCEL(submissionId),
       { params: { lang } }
     );
-    return response.data!; // Text/CSV string
+    return response.data!;
   },
 
   async exportHistory(lang: Language = "id"): Promise<string> {
@@ -229,7 +339,6 @@ export const questionnaireService = {
  * Admin Service
  */
 export const adminService = {
-  // Users Management
   users: {
     async getAll(limit: number = 10, offset: number = 0): Promise<any> {
       const response = await apiClient.get(API_ENDPOINTS.ADMIN.USERS.LIST, {
@@ -253,14 +362,13 @@ export const adminService = {
     },
   },
 
-  // Questions Management
   questions: {
     async getAll(lang: Language = "id"): Promise<Question[]> {
-      const response = await apiClient.get<Question[]>(
+      const response = await apiClient.get<any>(
         API_ENDPOINTS.ADMIN.QUESTIONS.LIST,
         { params: { lang } }
       );
-      return response.data!;
+      return extractArray<Question>(response.data);
     },
 
     async create(questionData: Partial<Question>): Promise<Question> {
@@ -290,13 +398,12 @@ export const adminService = {
     },
   },
 
-  // Diseases Management
   diseases: {
     async getAll(): Promise<Disease[]> {
-      const response = await apiClient.get<Disease[]>(
+      const response = await apiClient.get<any>(
         API_ENDPOINTS.ADMIN.DISEASES.LIST
       );
-      return response.data!;
+      return extractArray<Disease>(response.data);
     },
 
     async create(diseaseData: Partial<Disease>): Promise<Disease> {
@@ -326,7 +433,6 @@ export const adminService = {
     },
   },
 
-  // History
   async getHistory(
     limit: number = 20,
     offset: number = 0,
@@ -360,7 +466,7 @@ export const statisticsService = {
 };
 
 /**
- * Articles Service (External)
+ * Articles Service
  */
 export const articlesService = {
   async getArticles(limit: number = 10, query?: string): Promise<any> {
@@ -373,7 +479,7 @@ export const articlesService = {
 };
 
 /**
- * Maps Service (External)
+ * Maps Service
  */
 export const mapsService = {
   async getNearbyClinic(

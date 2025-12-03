@@ -8,6 +8,9 @@ import Login from "./pages/auth/Login";
 import Profile from "./pages/user/Profile";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "./context/AuthContext";
+import Questionnaire from "./pages/questionnaire/Questionnaire";
+import Result from "./pages/questionnaire/Result";
+import ProtectedRoute from "./components/ProtectRoute";
 
 const queryClient = new QueryClient();
 
@@ -21,7 +24,32 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/profile" element={<Profile />} />
+            {/* Protected Routes */}
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <Profile />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/questionnaire"
+              element={
+                <ProtectedRoute>
+                  <Questionnaire />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/result/:submissionId"
+              element={
+                <ProtectedRoute>
+                  <Result />
+                </ProtectedRoute>
+              }
+            />
+
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

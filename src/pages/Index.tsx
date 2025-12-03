@@ -7,20 +7,23 @@ import ArticlesSection from "@/components/ArticlesSection";
 import TeamSection from "@/components/TeamSection";
 import Footer from "@/components/Footer";
 import MapSection from "@/components/MapSection";
+import { AuthProvider } from "@/context/AuthContext";
 
 const Index = () => {
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <HeroSection />
-      <AboutSection />
-      <MissionSection />
-      <StorySection />
-      <ArticlesSection />
-      <TeamSection />
-      <MapSection />
-      <Footer />
-    </div>
+    <AuthProvider>
+      <div className="min-h-screen">
+        <Navbar />
+        <HeroSection />
+        <AboutSection />
+        <MissionSection />
+        <StorySection />
+        <ArticlesSection />
+        <TeamSection />
+        <MapSection />
+        <Footer />
+      </div>
+    </AuthProvider>
   );
 };
 

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom"; // ✅ Import
 import {
   User,
   Mail,
@@ -31,13 +32,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import logoIcon from "@/assets/logo-icon.png";
+import { useAuth } from "@/context/AuthContext";
 
 const Profile = () => {
+  const navigate = useNavigate(); // ✅ Tambahkan
+  const { user, logout } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [userData, setUserData] = useState({
-    name: "Sarah Wijaya",
-    email: "sarah.wijaya@email.com",
-    phone: "+62 812 3456 7890",
+    name: user?.name || "",
+    email: user?.email || "",
+    phone: user?.phone || "",
     birthDate: "1995-05-15",
     location: "Jember, Jawa Timur",
     bio: "Seorang ibu dengan 1 anak yang peduli dengan kesehatan keluarga.",
@@ -77,6 +81,18 @@ const Profile = () => {
     },
   ]);
 
+  // ✅ Update userData when user changes
+  useEffect(() => {
+    if (user) {
+      setUserData((prev) => ({
+        ...prev,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || prev.phone,
+      }));
+    }
+  }, [user]);
+
   const handleSave = () => {
     setIsEditing(false);
     // TODO: Save to backend
@@ -84,9 +100,8 @@ const Profile = () => {
   };
 
   const handleLogout = () => {
-    // TODO: Implement logout logic
-    console.log("Logging out...");
-    window.location.href = "/";
+    logout();
+    navigate("/login");
   };
 
   return (
@@ -95,14 +110,19 @@ const Profile = () => {
       <nav className="bg-card shadow-md sticky top-0 z-50">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
-            <a href="/" className="flex items-center space-x-3">
+            {/* ✅ Ubah dari <a> ke button dengan navigate */}
+            <button
+              onClick={() => navigate("/")}
+              className="flex items-center space-x-3 hover:opacity-80 transition-opacity"
+            >
               <img src={logoIcon} alt="SheCare Logo" className="w-10 h-10" />
               <span className="text-2xl font-bold text-accent">SheCare</span>
-            </a>
+            </button>
 
             <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" asChild>
-                <a href="/">Kembali ke Beranda</a>
+              {/* ✅ Ubah dari <a> ke Button dengan navigate */}
+              <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
+                Kembali ke Beranda
               </Button>
               <Button
                 variant="outline"
@@ -201,6 +221,7 @@ const Profile = () => {
             </CardContent>
           </Card>
 
+          {/* Rest of the component remains the same */}
           {/* Tabs */}
           <Tabs defaultValue="info" className="space-y-6">
             <TabsList className="grid w-full grid-cols-4 lg:w-fit">
